@@ -19,8 +19,8 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.marcos.acolher", 
-      "googleServicesFile": "./google-services.json" 
+      "package": "com.marcos.acolher",
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -37,8 +37,9 @@
       ]
     ],
     "extra": {
+      "router": {},
       "eas": {
-        "projectId": "1:211835036142:android:9798ff41e523043fcf2eff"
+        "projectId": "3f7b673b-2dbf-4666-811d-1ad779fcb11d"
       }
     }
   }

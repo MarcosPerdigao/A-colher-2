@@ -1,50 +1,76 @@
-# Welcome to your Expo app 👋
+# 🥄 A Colher (Meter a Colher)
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+> **Organize a vida a dois sem tretas.** > O app definitivo para casais que querem dividir tarefas, resolver impasses e gamificar a convivência.
 
-## Get started
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![React Native](https://img.shields.io/badge/React_Native-0.76-61DAFB.svg?logo=react)
+![Expo](https://img.shields.io/badge/Expo-Router-black.svg?logo=expo)
+![Firebase](https://img.shields.io/badge/Firebase-Firestore-FFCA28.svg?logo=firebase)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.0-3178C6.svg?logo=typescript)
 
-1. Install dependencies
+---
 
-   ```bash
-   npm install
-   ```
+## 📖 Sobre o Projeto
 
-2. Start the app
+**A Colher** é um aplicativo mobile desenvolvido para ajudar casais a gerenciarem as responsabilidades domésticas de forma leve e divertida. 
 
-   ```bash
-   npx expo start
-   ```
+Chega de discussões sobre quem vai lavar a louça! Com o recurso **"O Juiz"**, o app decide por vocês. Além disso, o **Mural da Discórdia** permite listar, priorizar e concluir tarefas, mantendo tudo sincronizado em tempo real entre os parceiros.
 
-In the output, you'll find options to open the app in a
+## ✨ Funcionalidades Principais
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+* 🔐 **Login & Autenticação:** Acesso seguro (Integração Google).
+* ❤️ **Sincronização de Casal:** Sistema inteligente de vinculação via **Código Único (#A1B2)**. Um cria, o outro entra, e o app conecta os dois magicamente.
+* 📝 **Mural da Discórdia:**
+    * Adicione tarefas com data e observações.
+    * Defina prioridades: *Suave*, *Atenção* ou *Pra Ontem!*.
+    * Filtre entre pendentes e concluídas.
+* ⚖️ **O Juiz:** Ferramenta de sorteio imparcial para decidir quem executa uma tarefa na hora do impasse.
+* 📊 **Gamificação (Em breve):** Sistema de pontuação e níveis para o casal.
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+## 🛠️ Tecnologias Utilizadas
 
-## Get a fresh project
+Este projeto foi construído com as tecnologias mais modernas do ecossistema React Native:
 
-When you're ready, run:
+* **[React Native](https://reactnative.dev/)** + **[Expo](https://expo.dev/)**: Para desenvolvimento ágil e compatibilidade iOS/Android.
+* **[Expo Router](https://docs.expo.dev/router/introduction/)**: Navegação baseada em arquivos (File-based routing), similar ao Next.js.
+* **[Firebase](https://firebase.google.com/)**:
+    * **Firestore**: Banco de dados NoSQL em tempo real para tarefas e usuários.
+    * **Auth**: Gerenciamento de autenticação.
+* **[TypeScript](https://www.typescriptlang.org/)**: Tipagem estática para código mais seguro e escalável.
+* **AsyncStorage**: Persistência de sessão local.
 
-```bash
-npm run reset-project
-```
+## 🚀 Como Rodar o Projeto
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+### Pré-requisitos
+* Node.js instalado.
+* Conta no Firebase configurada.
 
-## Learn more
+### Passo a Passo
 
-To learn more about developing your project with Expo, look at the following resources:
+1.  **Clone o repositório:**
+    ```bash
+    git clone [https://github.com/MarcosPerdigao/A-colher-2.git](https://github.com/MarcosPerdigao/A-colher-2.git)
+    cd A-colher-2
+    ```
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+2.  **Instale as dependências:**
+    ```bash
+    npm install
+    # ou
+    yarn install
+    ```
 
-## Join the community
+3.  **Configure o Firebase:**
+    * Crie um arquivo `firebaseConfig.ts` na raiz do projeto (baseado no `firebaseConfig.example.ts`).
+    * Insira suas chaves de API do Firebase Console.
 
-Join our community of developers creating universal apps.
+4.  **Execute o projeto:**
+    ```bash
+    npx expo start
+    ```
+    * Escaneie o QR Code com o app **Expo Go** (Android/iOS) ou rode no emulador.
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+## 📂 Estrutura de Pastas
+
+A estrutura segue o padrão do **Expo Router**:
+

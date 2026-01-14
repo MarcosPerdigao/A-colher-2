@@ -1,20 +1,14 @@
 import { Stack } from "expo-router";
+import { ThemeProvider } from "../src/context/ThemeContext";
 
-export default function Layout() {
+export default function RootLayout() {
   return (
-    <Stack
-      screenOptions={{
-        headerShown: false, // Comando Geral
-        contentStyle: { backgroundColor: "#FFF" }, // Fundo branco padrão
-        animation: "fade_from_bottom", // Animação suave
-      }}
-    >
-      {/* Forçando individualmente em cada rota para garantir */}
-      <Stack.Screen name="index" options={{ headerShown: false }} />
-      <Stack.Screen name="cadastro" options={{ headerShown: false }} />
-      <Stack.Screen name="setup" options={{ headerShown: false }} />
-      <Stack.Screen name="home" options={{ headerShown: false }} />
-      <Stack.Screen name="mural" options={{ headerShown: false }} />
-    </Stack>
+    // Esse Provider é obrigatório aqui para o Login funcionar
+    <ThemeProvider>
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="index" />
+        <Stack.Screen name="(tabs)" />
+      </Stack>
+    </ThemeProvider>
   );
 }

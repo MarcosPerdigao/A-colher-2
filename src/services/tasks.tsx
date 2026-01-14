@@ -15,6 +15,7 @@ import {
 import { getApp } from "firebase/app";
 import { ref, uploadBytes, getDownloadURL, getStorage } from "firebase/storage";
 
+// ATUALIZAMOS A INTERFACE COM OS NOVOS CAMPOS
 export interface Task {
   id: string;
   title: string;
@@ -23,6 +24,9 @@ export interface Task {
   date?: string;
   priority?: "high" | "medium" | "low";
   photo?: string;
+  assignedToNickname?: string; // Quem deve fazer
+  completedByNickname?: string; // Quem fez
+  completedAt?: string; // Data/Hora da conclusão
 }
 
 const COUPLES_COLLECTION = "couples";
@@ -59,6 +63,10 @@ export const TaskService = {
           const data = doc.data() as Omit<Task, "id">;
           tasks.push({ id: doc.id, ...data });
         });
+        // Ordena: Pendentes primeiro, depois por data
+        tasks.sort((a, b) =>
+          a.completed === b.completed ? 0 : a.completed ? 1 : -1
+        );
         onUpdate(tasks);
       });
       return unsubscribe;
@@ -102,17 +110,15 @@ export const TaskService = {
       await updateDoc(taskDocRef, data);
     } catch (error) {
       console.error("Erro ao update:", error);
-      throw error; // Lança o erro para o Mural pegar
+      throw error;
     }
   },
 
-  // UPLOAD BLINDADO (USANDO XMLHttpRequest)
   uploadImage: async (uri: string): Promise<string | null> => {
     try {
       const coupleCode = await getCoupleCode();
       if (!coupleCode) return null;
 
-      // 1. Converte URI para Blob de forma robusta
       const blob: any = await new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.onload = function () {
@@ -127,7 +133,6 @@ export const TaskService = {
         xhr.send(null);
       });
 
-      // 2. Define caminho
       const filename = `evidence_${Date.now()}.jpg`;
       const storage = getStorageInstance();
       const storageRef = ref(
@@ -135,14 +140,10 @@ export const TaskService = {
         `couples/${coupleCode}/tasks/${filename}`
       );
 
-      // 3. Upload
       await uploadBytes(storageRef, blob);
-
-      // 4. Libera memória do blob (importante!)
       // @ts-ignore
       blob.close();
 
-      // 5. URL
       const downloadUrl = await getDownloadURL(storageRef);
       return downloadUrl;
     } catch (error) {

@@ -47,7 +47,7 @@ export default function LoginScreen() {
               color="white"
               style={styles.icon}
             />
-            <Text style={styles.googleText}>Entrar com Google</Text>
+            <Text style={styles.googleText}>Entrar</Text>
           </TouchableOpacity>
         )}
       </View>

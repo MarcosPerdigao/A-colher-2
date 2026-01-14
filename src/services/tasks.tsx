@@ -1,5 +1,4 @@
 import "../../firebaseConfig";
-
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   collection,
@@ -11,7 +10,7 @@ import {
   query,
   getFirestore,
   onSnapshot,
-  setDoc, // <--- Importante para salvar o token
+  setDoc,
 } from "firebase/firestore";
 import { getApp } from "firebase/app";
 import { ref, uploadBytes, getDownloadURL, getStorage } from "firebase/storage";
@@ -39,12 +38,10 @@ const getStorageInstance = () => {
 };
 
 const getCoupleCode = async () => {
-  const code = await AsyncStorage.getItem("@couple_code");
-  return code;
+  return await AsyncStorage.getItem("@couple_code");
 };
 
 export const TaskService = {
-  // --- TEMPO REAL ---
   listen: async (
     onUpdate: (tasks: Task[]) => void
   ): Promise<(() => void) | null> => {
@@ -56,21 +53,14 @@ export const TaskService = {
       const tasksRef = collection(db, COUPLES_COLLECTION, coupleCode, "tasks");
       const q = query(tasksRef);
 
-      const unsubscribe = onSnapshot(
-        q,
-        (snapshot) => {
-          const tasks: Task[] = [];
-          snapshot.forEach((doc) => {
-            const data = doc.data() as Omit<Task, "id">;
-            tasks.push({ id: doc.id, ...data });
-          });
-          onUpdate(tasks);
-        },
-        (error) => {
-          console.error("Erro no listener:", error);
-        }
-      );
-
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const tasks: Task[] = [];
+        snapshot.forEach((doc) => {
+          const data = doc.data() as Omit<Task, "id">;
+          tasks.push({ id: doc.id, ...data });
+        });
+        onUpdate(tasks);
+      });
       return unsubscribe;
     } catch (error) {
       console.error("Erro ao iniciar listener:", error);
@@ -78,11 +68,7 @@ export const TaskService = {
     }
   },
 
-  getAll: async (): Promise<Task[]> => {
-    return []; // Não usado mais, pois usamos o listen
-  },
-
-  add: async (currentList: Task[], task: Task): Promise<void> => {
+  add: async (task: Task): Promise<void> => {
     try {
       const coupleCode = await getCoupleCode();
       if (!coupleCode) return;
@@ -95,7 +81,7 @@ export const TaskService = {
     }
   },
 
-  delete: async (currentList: Task[], id: string): Promise<void> => {
+  delete: async (id: string): Promise<void> => {
     try {
       const coupleCode = await getCoupleCode();
       if (!coupleCode) return;
@@ -104,20 +90,6 @@ export const TaskService = {
       await deleteDoc(taskDocRef);
     } catch (error) {
       console.error("Erro ao deletar:", error);
-    }
-  },
-
-  toggle: async (currentList: Task[], id: string): Promise<void> => {
-    try {
-      const coupleCode = await getCoupleCode();
-      if (!coupleCode) return;
-      const db = getDb();
-      const taskToToggle = currentList.find((t) => t.id === id);
-      if (!taskToToggle) return;
-      const taskDocRef = doc(db, COUPLES_COLLECTION, coupleCode, "tasks", id);
-      await updateDoc(taskDocRef, { completed: !taskToToggle.completed });
-    } catch (error) {
-      console.error("Erro ao toggle:", error);
     }
   },
 
@@ -130,67 +102,81 @@ export const TaskService = {
       await updateDoc(taskDocRef, data);
     } catch (error) {
       console.error("Erro ao update:", error);
+      throw error; // Lança o erro para o Mural pegar
     }
   },
 
+  // UPLOAD BLINDADO (USANDO XMLHttpRequest)
   uploadImage: async (uri: string): Promise<string | null> => {
     try {
       const coupleCode = await getCoupleCode();
       if (!coupleCode) return null;
-      const response = await fetch(uri);
-      const blob = await response.blob();
-      const filename = uri.substring(uri.lastIndexOf("/") + 1);
+
+      // 1. Converte URI para Blob de forma robusta
+      const blob: any = await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.onload = function () {
+          resolve(xhr.response);
+        };
+        xhr.onerror = function (e) {
+          console.log("XHR Error:", e);
+          reject(new TypeError("Falha na conversão da imagem"));
+        };
+        xhr.responseType = "blob";
+        xhr.open("GET", uri, true);
+        xhr.send(null);
+      });
+
+      // 2. Define caminho
+      const filename = `evidence_${Date.now()}.jpg`;
       const storage = getStorageInstance();
       const storageRef = ref(
         storage,
-        `couples/${coupleCode}/${Date.now()}_${filename}`
+        `couples/${coupleCode}/tasks/${filename}`
       );
+
+      // 3. Upload
       await uploadBytes(storageRef, blob);
+
+      // 4. Libera memória do blob (importante!)
+      // @ts-ignore
+      blob.close();
+
+      // 5. URL
       const downloadUrl = await getDownloadURL(storageRef);
       return downloadUrl;
     } catch (error) {
-      console.error("Erro no upload:", error);
+      console.error("Erro crítico no upload:", error);
       return null;
     }
   },
 
-  // --- NOTIFICAÇÕES: SALVAR TOKEN ---
-  saveUserToken: async (token: string, userName: string) => {
+  saveUserToken: async (token: string, nickname: string) => {
     try {
       const coupleCode = await getCoupleCode();
       if (!coupleCode) return;
-
       const db = getDb();
-      // Salva em: couples/CODIGO/tokens/NOME_DO_USUARIO
       const tokenRef = doc(
         db,
         COUPLES_COLLECTION,
         coupleCode,
         "tokens",
-        userName
+        nickname
       );
-
       await setDoc(
         tokenRef,
-        {
-          token: token,
-          updatedAt: new Date().toISOString(),
-        },
+        { token, updatedAt: new Date().toISOString() },
         { merge: true }
-      ); // merge garante que não apaga outros campos se houver
-
-      console.log("Token salvo para:", userName);
+      );
     } catch (error) {
-      console.error("Erro ao salvar token:", error);
+      console.error("Erro token:", error);
     }
   },
 
-  // --- NOTIFICAÇÕES: PEGAR TOKEN DO PARCEIRO ---
-  getPartnerToken: async (myUserName: string) => {
+  getPartnerNickname: async (myNickname: string) => {
     try {
       const coupleCode = await getCoupleCode();
       if (!coupleCode) return null;
-
       const db = getDb();
       const tokensRef = collection(
         db,
@@ -199,20 +185,34 @@ export const TaskService = {
         "tokens"
       );
       const snapshot = await getDocs(tokensRef);
-
-      let partnerToken = null;
-
+      let partnerNickname = null;
       snapshot.forEach((doc) => {
-        // Se o ID do documento (nome) não for o meu, deve ser o do parceiro
-        if (doc.id !== myUserName) {
-          const data = doc.data();
-          partnerToken = data.token;
-        }
+        if (doc.id !== myNickname) partnerNickname = doc.id;
       });
+      return partnerNickname;
+    } catch (error) {
+      return null;
+    }
+  },
 
+  getPartnerToken: async (myNickname: string) => {
+    try {
+      const coupleCode = await getCoupleCode();
+      if (!coupleCode) return null;
+      const db = getDb();
+      const tokensRef = collection(
+        db,
+        COUPLES_COLLECTION,
+        coupleCode,
+        "tokens"
+      );
+      const snapshot = await getDocs(tokensRef);
+      let partnerToken = null;
+      snapshot.forEach((doc) => {
+        if (doc.id !== myNickname) partnerToken = doc.data().token;
+      });
       return partnerToken;
     } catch (error) {
-      console.error("Erro ao buscar token do parceiro:", error);
       return null;
     }
   },

@@ -1,5 +1,4 @@
 import {
-  getAuth,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signOut,
@@ -7,23 +6,10 @@ import {
   User,
 } from "firebase/auth";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import {
-  getFirestore,
-  doc,
-  getDoc,
-  setDoc,
-  updateDoc,
-  arrayUnion,
-} from "firebase/firestore";
-import { getApp } from "firebase/app";
+import { doc, getDoc, setDoc, updateDoc, arrayUnion } from "firebase/firestore";
 
-const app = getApp();
-
-// MUDANÇA AQUI: Voltamos para o método padrão que é à prova de falhas.
-// Se o AsyncStorage estiver instalado no projeto, o Firebase tenta usá-lo automaticamente.
-const auth = getAuth(app);
-
-const db = getFirestore(app);
+// IMPORTA A CONFIGURAÇÃO CENTRALIZADA (Aqui está a correção!)
+import { auth, db } from "../../firebaseConfig";
 
 export const AuthService = {
   getCurrentUser: () => auth.currentUser,

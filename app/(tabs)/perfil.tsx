@@ -227,7 +227,36 @@ export default function ProfileScreen() {
           </View>
           <MaterialIcons name="chevron-right" size={24} color={colors.sub} />
         </TouchableOpacity>
+        {/* ... Botão Alterar Tema acima ... */}
 
+        <TouchableOpacity
+          style={[
+            styles.optionButton,
+            { backgroundColor: colors.card, marginTop: 10 },
+          ]}
+          onPress={() => router.push("/onboarding")}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 15 }}>
+            <View
+              style={[
+                styles.iconBox,
+                { backgroundColor: isFemale ? "#E3F2FD" : "#37474F" },
+              ]}
+            >
+              <MaterialCommunityIcons
+                name="book-open-page-variant"
+                size={20}
+                color={isFemale ? "#2196F3" : "#FFF"}
+              />
+            </View>
+            <Text style={[styles.optionText, { color: colors.text }]}>
+              Ver Tutorial
+            </Text>
+          </View>
+          <MaterialIcons name="chevron-right" size={24} color={colors.sub} />
+        </TouchableOpacity>
+
+        {/* ... Botão Logout abaixo ... */}
         <TouchableOpacity style={[styles.logoutBtn]} onPress={handleLogout}>
           <Text style={styles.logoutText}>Sair do App</Text>
         </TouchableOpacity>

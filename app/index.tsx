@@ -34,10 +34,12 @@ export default function LoginScreen() {
     type: "info" as any,
   });
 
+  // Auth Inputs
   const [isRegistering, setIsRegistering] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
+  // Setup Inputs
   const [nickname, setNickname] = useState("");
   const [sexo, setSexo] = useState<"masculino" | "feminino">("masculino");
   const [setupMode, setSetupMode] = useState<"create" | "join">("create");
@@ -61,26 +63,59 @@ export default function LoginScreen() {
     else setter(cleaned);
   };
 
+  // --- LÓGICA DE INICIALIZAÇÃO CORRIGIDA ---
   useEffect(() => {
-    const unsubscribe = AuthService.onStateChanged(async (user) => {
-      if (user) {
-        const userData = await AuthService.syncUserData(user.uid);
-        if (userData && userData.coupleCode) {
-          const savedTheme = await AsyncStorage.getItem("@app_theme");
-          const themeToUse = savedTheme || userData.sexo || "masculino";
-          await setTheme(themeToUse as any);
-          router.replace("/mural");
-        } else {
-          setViewState("setup");
+    let unsubscribeAuth: (() => void) | undefined;
+
+    const checkFlow = async () => {
+      try {
+        // 1. Verifica se já viu o tutorial
+        const hasSeenTutorial = await AsyncStorage.getItem(
+          "@app_has_seen_tutorial"
+        );
+
+        if (!hasSeenTutorial) {
+          // Se não viu, vai pro Tutorial
           setLoading(false);
+          router.replace("/onboarding");
+          return;
         }
-      } else {
-        setViewState("auth");
+
+        // 2. Se já viu, verifica o Login
+        unsubscribeAuth = AuthService.onStateChanged(async (user) => {
+          if (user) {
+            const userData = await AuthService.syncUserData(user.uid);
+
+            if (userData && userData.coupleCode) {
+              // Usuário com perfil completo -> Vai pro Mural
+              const savedTheme = await AsyncStorage.getItem("@app_theme");
+              const themeToUse = savedTheme || userData.sexo || "masculino";
+              await setTheme(themeToUse as any);
+              router.replace("/mural");
+            } else {
+              // Logado mas sem perfil -> Vai pro Setup
+              setViewState("setup");
+              setLoading(false);
+            }
+          } else {
+            // Não logado -> Mostra Login
+            setViewState("auth");
+            setLoading(false);
+          }
+        });
+      } catch (e) {
+        console.log("Erro inicialização:", e);
         setLoading(false);
       }
-    });
-    return unsubscribe;
+    };
+
+    checkFlow();
+
+    return () => {
+      if (unsubscribeAuth) unsubscribeAuth();
+    };
   }, []);
+  // ----------------------------------------
 
   const handleAuth = async () => {
     if (!email || !password)
@@ -89,6 +124,7 @@ export default function LoginScreen() {
     try {
       if (isRegistering) await AuthService.register(email, password);
       else await AuthService.login(email, password);
+      // O useEffect vai capturar a mudança de estado e redirecionar
     } catch (error: any) {
       showAlert("Erro", error.message, "error");
       setLoading(false);
@@ -138,6 +174,7 @@ export default function LoginScreen() {
         birthDate,
         anniversaryDate
       );
+
       await setTheme(sexo);
 
       if (setupMode === "create") {

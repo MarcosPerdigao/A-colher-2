@@ -3,11 +3,12 @@
     "name": "A Colher",
     "slug": "a-colher",
     "version": "1.0.0",
+    "scheme": "acolher",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png", 
+    "icon": "./assets/images/icon.png",
     "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/images/splash.png", 
+      "image": "./assets/images/splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -16,7 +17,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png", 
+        "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
       "package": "com.marcos.acolher",
@@ -31,7 +32,7 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/images/icon.png", 
+          "icon": "./assets/images/icon.png",
           "color": "#ffffff"
         }
       ]

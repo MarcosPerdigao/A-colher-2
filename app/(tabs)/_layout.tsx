@@ -2,12 +2,12 @@ import React from "react";
 import { Tabs } from "expo-router";
 import { MaterialIcons, FontAwesome5 } from "@expo/vector-icons";
 import { Platform } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context"; // <--- O SEGREDO TÁ AQUI
+import { useSafeAreaInsets } from "react-native-safe-area-context"; // Ajuste do Android
 import { useTheme } from "../../src/context/ThemeContext";
 
 export default function TabLayout() {
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets(); // Pega as medidas da tela segura
+  const insets = useSafeAreaInsets();
 
   return (
     <Tabs
@@ -16,13 +16,9 @@ export default function TabLayout() {
         tabBarStyle: {
           backgroundColor: colors.card,
           borderTopColor: colors.border,
-          
-          // AJUSTE DINÂMICO PARA ANDROID E IPHONE:
-          // Altura = 60px (padrão) + o tamanho da barra de sistema do celular
+          // Altura dinâmica para não ficar em cima do botão do Android
           height: 60 + insets.bottom,
-          // Espaço interno = 10px (respiro) + o tamanho da barra de sistema
           paddingBottom: 10 + insets.bottom,
-          
           elevation: 5,
         },
         tabBarActiveTintColor: colors.primary,
@@ -33,6 +29,7 @@ export default function TabLayout() {
         },
       }}
     >
+      {/* O 'name' aqui TEM que ser igual ao nome do arquivo .tsx */}
       <Tabs.Screen
         name="mural"
         options={{
@@ -46,7 +43,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="financeiro"
         options={{
-          title: "Grana",
+          title: "Grana", // O título que aparece no menu
           tabBarIcon: ({ color, size }) => (
             <FontAwesome5 name="piggy-bank" size={size - 4} color={color} />
           ),

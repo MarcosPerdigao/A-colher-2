@@ -1,9 +1,8 @@
 import { initializeApp } from "firebase/app";
-// Voltamos para o getAuth padrão, que é mais estável com TypeScript
-import { getAuth } from "firebase/auth";
+// @ts-ignore: Erro de tipagem conhecido do Firebase no Expo
+import { initializeAuth, getReactNativePersistence } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
-// Importamos o AsyncStorage apenas para garantir que o pacote está linkado no projeto
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const firebaseConfig = {
@@ -18,9 +17,10 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 
-// O getAuth detecta o @react-native-async-storage/async-storage automaticamente
-// se ele estiver instalado no package.json (e você já instalou!)
-export const auth = getAuth(app);
+// Inicializa o Auth forçando o uso do AsyncStorage
+export const auth = initializeAuth(app, {
+  persistence: getReactNativePersistence(AsyncStorage),
+});
 
 export const db = getFirestore(app);
 export const storage = getStorage(app);

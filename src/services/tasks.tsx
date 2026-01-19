@@ -2,31 +2,31 @@ import "../../firebaseConfig";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   collection,
-  getDocs,
-  addDoc,
-  updateDoc,
-  deleteDoc,
   doc,
   query,
   getFirestore,
   onSnapshot,
   setDoc,
+  deleteDoc,
+  updateDoc,
+  getDocs,
 } from "firebase/firestore";
 import { getApp } from "firebase/app";
 import { ref, uploadBytes, getDownloadURL, getStorage } from "firebase/storage";
 
-// ATUALIZAMOS A INTERFACE COM OS NOVOS CAMPOS
 export interface Task {
   id: string;
   title: string;
   completed: boolean;
+  createdAt: string;
+  createdBy?: string; // Quem criou (pode ser "Juiz")
   observation?: string;
   date?: string;
   priority?: "high" | "medium" | "low";
   photo?: string;
-  assignedToNickname?: string; // Quem deve fazer
-  completedByNickname?: string; // Quem fez
-  completedAt?: string; // Data/Hora da conclusão
+  assignedToNickname?: string;
+  completedByNickname?: string;
+  completedAt?: string;
 }
 
 const COUPLES_COLLECTION = "couples";
@@ -45,9 +45,20 @@ const getCoupleCode = async () => {
   return await AsyncStorage.getItem("@couple_code");
 };
 
+export const checkTaskStatus = (task: Task): "normal" | "late" | "expired" => {
+  if (task.completed) return "normal";
+  if (!task.createdAt) return "normal";
+  const created = new Date(task.createdAt).getTime();
+  const now = new Date().getTime();
+  const diffHours = (now - created) / (1000 * 60 * 60);
+  if (diffHours >= 26) return "expired";
+  if (diffHours >= 24) return "late";
+  return "normal";
+};
+
 export const TaskService = {
   listen: async (
-    onUpdate: (tasks: Task[]) => void
+    onUpdate: (tasks: Task[]) => void,
   ): Promise<(() => void) | null> => {
     try {
       const coupleCode = await getCoupleCode();
@@ -61,12 +72,13 @@ export const TaskService = {
         const tasks: Task[] = [];
         snapshot.forEach((doc) => {
           const data = doc.data() as Omit<Task, "id">;
-          tasks.push({ id: doc.id, ...data });
+          // GARANTE QUE O ID SEJA O DO ARQUIVO REAL
+          tasks.push({ ...data, id: doc.id });
         });
-        // Ordena: Pendentes primeiro, depois por data
-        tasks.sort((a, b) =>
-          a.completed === b.completed ? 0 : a.completed ? 1 : -1
-        );
+        tasks.sort((a, b) => {
+          if (a.completed === b.completed) return 0;
+          return a.completed ? 1 : -1;
+        });
         onUpdate(tasks);
       });
       return unsubscribe;
@@ -81,9 +93,21 @@ export const TaskService = {
       const coupleCode = await getCoupleCode();
       if (!coupleCode) return;
       const db = getDb();
-      const tasksRef = collection(db, COUPLES_COLLECTION, coupleCode, "tasks");
-      const { id, ...taskData } = task;
-      await addDoc(tasksRef, taskData);
+      // Força o ID ser o timestamp gerado no app
+      const taskDocRef = doc(
+        db,
+        COUPLES_COLLECTION,
+        coupleCode,
+        "tasks",
+        task.id,
+      );
+
+      const taskWithTimestamp = {
+        ...task,
+        createdAt: new Date().toISOString(),
+      };
+
+      await setDoc(taskDocRef, taskWithTimestamp);
     } catch (error) {
       console.error("Erro ao salvar:", error);
     }
@@ -94,6 +118,8 @@ export const TaskService = {
       const coupleCode = await getCoupleCode();
       if (!coupleCode) return;
       const db = getDb();
+      if (!id) return;
+
       const taskDocRef = doc(db, COUPLES_COLLECTION, coupleCode, "tasks", id);
       await deleteDoc(taskDocRef);
     } catch (error) {
@@ -107,7 +133,9 @@ export const TaskService = {
       if (!coupleCode) return;
       const db = getDb();
       const taskDocRef = doc(db, COUPLES_COLLECTION, coupleCode, "tasks", id);
-      await updateDoc(taskDocRef, data);
+
+      // Use setDoc com merge para evitar erro de "No document to update"
+      await setDoc(taskDocRef, data, { merge: true });
     } catch (error) {
       console.error("Erro ao update:", error);
       throw error;
@@ -118,36 +146,29 @@ export const TaskService = {
     try {
       const coupleCode = await getCoupleCode();
       if (!coupleCode) return null;
-
       const blob: any = await new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.onload = function () {
           resolve(xhr.response);
         };
         xhr.onerror = function (e) {
-          console.log("XHR Error:", e);
           reject(new TypeError("Falha na conversão da imagem"));
         };
         xhr.responseType = "blob";
         xhr.open("GET", uri, true);
         xhr.send(null);
       });
-
       const filename = `evidence_${Date.now()}.jpg`;
       const storage = getStorageInstance();
       const storageRef = ref(
         storage,
-        `couples/${coupleCode}/tasks/${filename}`
+        `couples/${coupleCode}/tasks/${filename}`,
       );
-
       await uploadBytes(storageRef, blob);
       // @ts-ignore
       blob.close();
-
-      const downloadUrl = await getDownloadURL(storageRef);
-      return downloadUrl;
+      return await getDownloadURL(storageRef);
     } catch (error) {
-      console.error("Erro crítico no upload:", error);
       return null;
     }
   },
@@ -162,12 +183,12 @@ export const TaskService = {
         COUPLES_COLLECTION,
         coupleCode,
         "tokens",
-        nickname
+        nickname,
       );
       await setDoc(
         tokenRef,
         { token, updatedAt: new Date().toISOString() },
-        { merge: true }
+        { merge: true },
       );
     } catch (error) {
       console.error("Erro token:", error);
@@ -183,7 +204,7 @@ export const TaskService = {
         db,
         COUPLES_COLLECTION,
         coupleCode,
-        "tokens"
+        "tokens",
       );
       const snapshot = await getDocs(tokensRef);
       let partnerNickname = null;
@@ -205,7 +226,7 @@ export const TaskService = {
         db,
         COUPLES_COLLECTION,
         coupleCode,
-        "tokens"
+        "tokens",
       );
       const snapshot = await getDocs(tokensRef);
       let partnerToken = null;

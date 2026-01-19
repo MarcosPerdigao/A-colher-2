@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"; // Removi useRef
+import { useState, useEffect } from "react";
 import { Vibration } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ImagePicker from "expo-image-picker";
@@ -12,17 +12,15 @@ export interface TaskWithPhoto extends Task {
 export function useMural(sexo: string | string[] | undefined) {
   const isFemale = sexo === "feminino";
 
-  // Estados de Dados
   const [tasks, setTasks] = useState<TaskWithPhoto[]>([]);
   const [partnerName, setPartnerName] = useState("Parceiro");
   const [myNickname, setMyNickname] = useState("");
 
-  // Estados de Controle Visual
   const [activeTab, setActiveTab] = useState<"pending" | "completed">(
-    "pending"
+    "pending",
   );
   const [uploading, setUploading] = useState(false);
-  const [showConfetti, setShowConfetti] = useState(false); // <--- NOVO: Controla se o canhão existe ou não
+  const [showConfetti, setShowConfetti] = useState(false);
 
   const [modals, setModals] = useState({
     new: false,
@@ -38,6 +36,7 @@ export function useMural(sexo: string | string[] | undefined) {
     message: "",
     type: "info" as "success" | "warning" | "error",
   });
+
   const [judgeResult, setJudgeResult] = useState<{
     title: string;
     message: string;
@@ -49,7 +48,7 @@ export function useMural(sexo: string | string[] | undefined) {
     string | null
   >(null);
   const [selectedPhotoToView, setSelectedPhotoToView] = useState<string | null>(
-    null
+    null,
   );
 
   const theme = isFemale
@@ -78,13 +77,17 @@ export function useMural(sexo: string | string[] | undefined) {
     let unsubscribe: (() => void) | null = null;
     const setup = async () => {
       unsubscribe = await TaskService.listen(setTasks);
-      const token =
-        await NotificationService.registerForPushNotificationsAsync();
       const storedNickname = await AsyncStorage.getItem("@user_nickname");
-
       if (storedNickname) {
         setMyNickname(storedNickname);
-        if (token) await TaskService.saveUserToken(token, storedNickname);
+        try {
+          const token =
+            await NotificationService.registerForPushNotificationsAsync();
+          if (token) await TaskService.saveUserToken(token, storedNickname);
+        } catch (e) {
+          console.log("Erro push setup:", e);
+        }
+
         const pNickname = await TaskService.getPartnerNickname(storedNickname);
         if (pNickname) setPartnerName(pNickname);
       }
@@ -95,15 +98,30 @@ export function useMural(sexo: string | string[] | undefined) {
     };
   }, []);
 
+  const removeTaskFromState = (taskId: string) => {
+    setTasks((currentTasks) => currentTasks.filter((t) => t.id !== taskId));
+  };
+
+  const updateTaskInState = (
+    taskId: string,
+    newData: Partial<TaskWithPhoto>,
+  ) => {
+    setTasks((currentTasks) =>
+      currentTasks.map((t) => (t.id === taskId ? { ...t, ...newData } : t)),
+    );
+  };
+
   const toggleModal = (modal: keyof typeof modals, value: boolean) => {
     setModals((prev) => ({ ...prev, [modal]: value }));
   };
 
+  // Permite que o mural.tsx chame o modal de feedback
   const showFeedback = (
     title: string,
     message: string,
-    type: "success" | "warning" | "error"
+    type: "success" | "warning" | "error",
   ) => {
+    if (type === "warning" || type === "error") Vibration.vibrate();
     setFeedbackData({ title, message, type });
     toggleModal("feedback", true);
   };
@@ -113,29 +131,27 @@ export function useMural(sexo: string | string[] | undefined) {
       title: string;
       obs: string;
       date: string;
-      priority: "high" | "medium" | "low" | null;
+      priority: "high" | "medium" | "low" | undefined;
       assignedTo: "me" | "partner" | "judge";
     },
-    resetForm: () => void
+    resetForm: () => void,
   ) => {
     const { title, obs, date, priority, assignedTo } = taskData;
 
     let finalRecipient = assignedTo;
     let displayTitle = title;
-    let notificationTitle = "Nova tarefa no Mural! 🥄";
-    let notificationBody = `${myNickname} adicionou: ${title}`;
     let assignedNickname =
       assignedTo === "me"
         ? myNickname
         : assignedTo === "partner"
-        ? partnerName
-        : "judge";
+          ? partnerName
+          : "judge";
 
     if (assignedTo === "judge") {
       const isMe = Math.random() > 0.5;
       finalRecipient = isMe ? "me" : "partner";
       assignedNickname = isMe ? myNickname : partnerName;
-      displayTitle = `⚖️ [JUIZ] ${title}`;
+      displayTitle = title; // Limpo, sem [JUIZ] no texto
 
       if (isMe) {
         setJudgeResult({
@@ -144,8 +160,6 @@ export function useMural(sexo: string | string[] | undefined) {
           icon: "gavel",
           color: "#EF5350",
         });
-        notificationTitle = "O JUIZ TE SALVOU! ⚖️ 🎉";
-        notificationBody = `O juiz mandou o(a) ${myNickname} fazer: ${title}`;
       } else {
         setJudgeResult({
           title: "VITÓRIA! 🎉",
@@ -153,12 +167,8 @@ export function useMural(sexo: string | string[] | undefined) {
           icon: "trophy",
           color: theme.success,
         });
-        notificationTitle = "VEREDITO DO JUIZ! ⚖️";
-        notificationBody = `Sinto muito, ${partnerName}, você perdeu no sorteio: ${title}`;
       }
       toggleModal("judge", true);
-    } else if (assignedTo === "me") {
-      displayTitle = `👤 [EU] ${title}`;
     }
 
     const newTaskObj: TaskWithPhoto = {
@@ -167,22 +177,14 @@ export function useMural(sexo: string | string[] | undefined) {
       completed: false,
       observation: obs,
       date: date,
-      priority: priority!,
+      priority: priority,
       assignedToNickname: assignedNickname,
+      createdAt: new Date().toISOString(),
+      // Se foi sorteio, o criador é "Juiz"
+      createdBy: assignedTo === "judge" ? "Juiz" : myNickname,
     };
 
     await TaskService.add(newTaskObj);
-
-    if (finalRecipient === "partner") {
-      const token = await TaskService.getPartnerToken(myNickname);
-      if (token)
-        await NotificationService.sendPushNotification(
-          token,
-          notificationTitle,
-          notificationBody
-        );
-    }
-
     toggleModal("new", false);
     resetForm();
   };
@@ -209,13 +211,14 @@ export function useMural(sexo: string | string[] | undefined) {
       if (publicPhotoUrl) updates.photo = publicPhotoUrl;
 
       await TaskService.update(selectedTaskToFinish, updates);
+      updateTaskInState(selectedTaskToFinish, updates);
 
       const token = await TaskService.getPartnerToken(myNickname);
       if (token)
         await NotificationService.sendPushNotification(
           token,
           "Tarefa Concluída! 🎉",
-          `${myNickname} finalizou: ${task?.title}`
+          `${myNickname} finalizou: ${task?.title}`,
         );
 
       if (warning) showFeedback("Atenção", warning, "warning");
@@ -237,11 +240,9 @@ export function useMural(sexo: string | string[] | undefined) {
       const current =
         parseInt((await AsyncStorage.getItem("@task_streak")) || "0") + 1;
       await AsyncStorage.setItem("@task_streak", current.toString());
-
-      // Se for múltiplo de 3, ativa os confetes!
       if (current % 3 === 0) {
         setTimeout(() => {
-          setShowConfetti(true); // <--- Ativa o estado
+          setShowConfetti(true);
         }, 500);
       }
     } catch (e) {
@@ -256,19 +257,6 @@ export function useMural(sexo: string | string[] | undefined) {
         toggleModal("preview", true);
       }
     } else {
-      if (
-        item.assignedToNickname &&
-        item.assignedToNickname !== myNickname &&
-        item.assignedToNickname !== "judge"
-      ) {
-        Vibration.vibrate();
-        showFeedback(
-          "Ei, espera!",
-          `Essa tarefa é do(a) ${item.assignedToNickname}.`,
-          "warning"
-        );
-        return;
-      }
       setSelectedTaskToFinish(item.id);
       toggleModal("finish", true);
     }
@@ -300,14 +288,17 @@ export function useMural(sexo: string | string[] | undefined) {
     modals,
     toggleModal,
     feedbackData,
+    showFeedback, // EXPORTANDO
     judgeResult,
     showConfetti,
-    setShowConfetti, // Exportando o controle de confete
+    setShowConfetti,
     selectedPhotoToView,
     handleAddTask,
     handleTaskPress,
     pickImage,
     completeTask,
+    removeTaskFromState,
+    updateTaskInState,
     pendingTasks: tasks.filter((t) => !t.completed),
     completedTasks: tasks.filter((t) => t.completed),
   };

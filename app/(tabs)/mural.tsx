@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -15,20 +15,22 @@ import {
   ActivityIndicator,
   Dimensions,
 } from "react-native";
-import { Stack } from "expo-router";
+import { Stack, useFocusEffect } from "expo-router";
 import {
-  MaterialIcons,
   AntDesign,
   Ionicons,
   FontAwesome5,
   MaterialCommunityIcons,
+  MaterialIcons,
 } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import ConfettiCannon from "react-native-confetti-cannon";
 
 import { useMural } from "../../src/hooks/useMural";
 import TaskCard from "../../src/components/TaskCard";
-import { TaskService } from "../../src/services/tasks";
+import { TaskService, Task } from "../../src/services/tasks";
+import { sendPushNotification } from "../../src/services/notifications";
+import { HistoryService } from "../../src/services/history";
 import { useTheme } from "../../src/context/ThemeContext";
 
 import {
@@ -50,19 +52,48 @@ export default function MuralScreen() {
 
   const mural = useMural(isFemale ? "feminino" : "masculino");
 
+  // ESTADOS DO FORMULÁRIO
   const [newTask, setNewTask] = useState("");
   const [newObs, setNewObs] = useState("");
   const [taskDate, setTaskDate] = useState("");
   const [newPriority, setNewPriority] = useState<
-    "high" | "medium" | "low" | null
-  >(null);
+    "high" | "medium" | "low" | undefined
+  >(undefined);
   const [assignedTo, setAssignedTo] = useState<"me" | "partner" | "judge">(
-    "partner"
+    "partner",
   );
+
+  // ESTADOS DE CONTROLE
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [showOptions, setShowOptions] = useState(false);
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+
   const [errorTitle, setErrorTitle] = useState("");
   const [errorPriority, setErrorPriority] = useState(false);
 
-  const checkImportantDates = async () => {
+  const [myPhoto, setMyPhoto] = useState<string | null>(null);
+  const [partnerPhoto, setPartnerPhoto] = useState<string | null>(null);
+
+  const notifyPartner = async (
+    title: string,
+    body: string,
+    targetRole: "partner" | "judge" | "me",
+  ) => {
+    try {
+      if (targetRole === "me") return;
+      const partnerToken = await TaskService.getPartnerToken(mural.myNickname);
+      if (partnerToken) {
+        await sendPushNotification(partnerToken, title, body, {
+          screen: "mural",
+        });
+      }
+    } catch (e) {
+      console.log("Erro ao notificar:", e);
+    }
+  };
+
+  const loadUserDataAndDates = async () => {
     try {
       const auth = getAuth();
       if (!auth.currentUser) return;
@@ -72,18 +103,7 @@ export default function MuralScreen() {
       if (!mySnap.exists()) return;
       const myData = mySnap.data();
 
-      const today = new Date();
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      const formatDayMonth = (date: Date) => {
-        const d = String(date.getDate()).padStart(2, "0");
-        const m = String(date.getMonth() + 1).padStart(2, "0");
-        return `${d}/${m}`;
-      };
-      const tomorrowStr = formatDayMonth(tomorrow);
-
-      if (myData.anniversaryDate === tomorrowStr)
-        mural.toggleModal("feedback", true);
+      if (myData.photoURL) setMyPhoto(myData.photoURL);
 
       const coupleCode = myData.coupleCode;
       if (coupleCode) {
@@ -93,8 +113,7 @@ export default function MuralScreen() {
         querySnapshot.forEach((doc) => {
           if (doc.id !== auth.currentUser?.uid) {
             const partnerData = doc.data();
-            if (partnerData.birthDate === tomorrowStr)
-              mural.toggleModal("feedback", true);
+            if (partnerData.photoURL) setPartnerPhoto(partnerData.photoURL);
           }
         });
       }
@@ -103,15 +122,19 @@ export default function MuralScreen() {
     }
   };
 
-  useEffect(() => {
-    checkImportantDates();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      loadUserDataAndDates();
+    }, []),
+  );
 
   const resetForm = () => {
     setNewTask("");
     setNewObs("");
-    setNewPriority(null);
+    setNewPriority(undefined);
     setAssignedTo("partner");
+    setTaskDate("");
+    setEditingId(null);
     setErrorTitle("");
     setErrorPriority(false);
   };
@@ -122,7 +145,101 @@ export default function MuralScreen() {
     mural.toggleModal("new", true);
   };
 
-  const submitTask = () => {
+  const handleLongPress = (task: Task) => {
+    setSelectedTask(task);
+    setShowOptions(true);
+  };
+
+  const handleEditOption = () => {
+    if (!selectedTask) return;
+
+    if (selectedTask.createdBy === "Juiz") {
+      mural.showFeedback(
+        "Veredito Final ⚖️",
+        "O Juiz sentenciou essa tarefa! Não cabe recurso (edição).",
+        "error",
+      );
+      setShowOptions(false);
+      return;
+    }
+
+    setNewTask(selectedTask.title);
+    setNewObs(selectedTask.observation || "");
+    setTaskDate(selectedTask.date || "");
+    setNewPriority(selectedTask.priority);
+
+    let assign = "partner";
+    if (
+      selectedTask.assignedToNickname === "me" ||
+      selectedTask.assignedToNickname === mural.myNickname
+    )
+      assign = "me";
+    else if (selectedTask.assignedToNickname === "judge") assign = "judge";
+    setAssignedTo(assign as any);
+
+    setEditingId(selectedTask.id);
+    setShowOptions(false);
+    mural.toggleModal("new", true);
+  };
+
+  const handleDeleteOption = () => {
+    const taskToDelete = selectedTask;
+    if (!taskToDelete) return;
+
+    if (taskToDelete.createdBy === "Juiz") {
+      mural.showFeedback(
+        "Veredito Final ⚖️",
+        "Ordem do Juiz não se discute, se cumpre!",
+        "error",
+      );
+      setShowOptions(false);
+      return;
+    }
+
+    const isMyTask =
+      taskToDelete.assignedToNickname === "me" ||
+      taskToDelete.assignedToNickname === mural.myNickname;
+    const createdByPartner =
+      taskToDelete.createdBy && taskToDelete.createdBy !== mural.myNickname;
+
+    if (createdByPartner && isMyTask) {
+      mural.showFeedback(
+        "Sem Trapaça! 🚫",
+        `Tarefa dada pelo(a) ${mural.partnerName}. Só ele(a) pode tirar!`,
+        "warning",
+      );
+      setShowOptions(false);
+      return;
+    }
+
+    setShowOptions(false);
+    setShowDeleteModal(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!selectedTask) return;
+    const taskId = selectedTask.id;
+    const taskTitle = selectedTask.title;
+
+    try {
+      mural.removeTaskFromState(taskId);
+      setShowDeleteModal(false);
+      setSelectedTask(null);
+
+      await TaskService.delete(taskId);
+      await HistoryService.logAction(mural.myNickname, "excluiu", taskTitle);
+
+      await notifyPartner(
+        "Tarefa Removida 🗑️",
+        `${mural.myNickname} excluiu: ${taskTitle}`,
+        "partner",
+      );
+    } catch (error) {
+      console.log("Erro ao excluir:", error);
+    }
+  };
+
+  const submitTask = async () => {
     let hasError = false;
     if (!newTask.trim()) {
       setErrorTitle("O que precisamos fazer?");
@@ -134,16 +251,49 @@ export default function MuralScreen() {
     }
     if (hasError) return;
 
-    mural.handleAddTask(
-      {
+    if (editingId) {
+      const updates = {
         title: newTask,
-        obs: newObs,
+        observation: newObs,
         date: taskDate,
         priority: newPriority,
-        assignedTo,
-      },
-      resetForm
-    );
+        assignedToNickname:
+          assignedTo === "me"
+            ? mural.myNickname
+            : assignedTo === "judge"
+              ? "judge"
+              : (await TaskService.getPartnerNickname(mural.myNickname)) ||
+                "Parceiro",
+      };
+
+      mural.updateTaskInState(editingId, updates);
+      mural.toggleModal("new", false);
+      resetForm();
+
+      await TaskService.update(editingId, updates);
+      await HistoryService.logAction(mural.myNickname, "editou", newTask);
+
+      const title =
+        assignedTo === "judge"
+          ? "👩‍⚖️ O Juiz foi acionado!"
+          : "Tarefa Atualizada ✏️";
+      await notifyPartner(title, `Tarefa alterada: ${newTask}`, assignedTo);
+    } else {
+      await mural.handleAddTask(
+        {
+          title: newTask,
+          obs: newObs,
+          date: taskDate,
+          priority: newPriority as any,
+          assignedTo: assignedTo,
+        },
+        resetForm,
+      );
+
+      const title =
+        assignedTo === "judge" ? "👩‍⚖️ O Juiz foi acionado!" : "Nova Missão! 🥄";
+      await notifyPartner(title, `Nova tarefa: ${newTask}`, assignedTo);
+    }
   };
 
   const handleTabPress = (tab: "pending" | "completed") => {
@@ -251,7 +401,8 @@ export default function MuralScreen() {
                 item === "pending" ? mural.pendingTasks : mural.completedTasks
               }
               keyExtractor={(t) => t.id}
-              contentContainerStyle={{ paddingBottom: 100 }}
+              contentContainerStyle={{ paddingBottom: 150 }}
+              showsVerticalScrollIndicator={false}
               renderItem={({ item: task }) => (
                 <TaskCard
                   item={task}
@@ -259,7 +410,13 @@ export default function MuralScreen() {
                   myNickname={mural.myNickname}
                   formatDate={formatCompletedAt}
                   onPress={() => mural.handleTaskPress(task)}
-                  onLongPress={() => TaskService.delete(task.id)}
+                  onLongPress={() => {
+                    if (!task.completed) {
+                      handleLongPress(task);
+                    }
+                  }}
+                  myPhoto={myPhoto}
+                  partnerPhoto={partnerPhoto}
                 />
               )}
               ListEmptyComponent={
@@ -280,7 +437,7 @@ export default function MuralScreen() {
         <TouchableOpacity
           style={[
             styles.fabBase,
-            { backgroundColor: colors.primary, bottom: 40 + insets.bottom },
+            { backgroundColor: colors.primary, bottom: 50 + insets.bottom },
           ]}
           onPress={openNewTask}
         >
@@ -292,7 +449,117 @@ export default function MuralScreen() {
         </TouchableOpacity>
       )}
 
-      {/* --- MODAIS --- */}
+      <GenericModal
+        visible={showOptions}
+        onClose={() => setShowOptions(false)}
+        bg={colors.card}
+      >
+        <Text
+          style={[styles.modalTitle, { color: colors.text, marginBottom: 20 }]}
+        >
+          O que deseja fazer?
+        </Text>
+        <TouchableOpacity
+          style={[styles.optionMenuBtn, { backgroundColor: colors.bg }]}
+          onPress={handleEditOption}
+        >
+          <MaterialIcons name="edit" size={24} color={colors.primary} />
+          <Text style={[styles.optionMenuText, { color: colors.text }]}>
+            Editar Tarefa
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.optionMenuBtn,
+            { backgroundColor: colors.bg, marginTop: 10 },
+          ]}
+          onPress={handleDeleteOption}
+        >
+          <MaterialIcons name="delete" size={24} color="#FF5252" />
+          <Text style={[styles.optionMenuText, { color: "#FF5252" }]}>
+            Excluir Tarefa
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => setShowOptions(false)}
+          style={{ marginTop: 20 }}
+        >
+          <Text style={{ color: colors.sub }}>Cancelar</Text>
+        </TouchableOpacity>
+      </GenericModal>
+
+      <GenericModal
+        visible={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        bg={colors.card}
+      >
+        <MaterialCommunityIcons
+          name="trash-can-outline"
+          size={50}
+          color="#FF5252"
+          style={{ marginBottom: 10 }}
+        />
+        <Text
+          style={[styles.modalTitle, { color: "#FF5252", marginBottom: 5 }]}
+        >
+          Excluir Tarefa?
+        </Text>
+        <Text
+          style={{ color: colors.text, textAlign: "center", marginBottom: 20 }}
+        >
+          Tem certeza que deseja apagar "{selectedTask?.title}"? Essa ação não
+          pode ser desfeita.
+        </Text>
+
+        <TouchableOpacity
+          style={[
+            styles.saveBtn,
+            { backgroundColor: "#FF5252", width: "100%", marginBottom: 10 },
+          ]}
+          onPress={confirmDelete}
+        >
+          <Text style={{ color: "#FFF", fontWeight: "bold" }}>
+            Sim, Excluir
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => setShowDeleteModal(false)}
+          style={{ padding: 10 }}
+        >
+          <Text style={{ color: colors.text }}>Cancelar</Text>
+        </TouchableOpacity>
+      </GenericModal>
+
+      <GenericModal
+        visible={mural.modals.feedback}
+        onClose={() => mural.toggleModal("feedback", false)}
+        bg={colors.card}
+      >
+        <MaterialCommunityIcons
+          name={
+            mural.feedbackData.type === "error" ? "alert-circle" : "information"
+          }
+          size={50}
+          color={mural.feedbackData.type === "error" ? "#FF5252" : "#FFCA28"}
+          style={{ marginBottom: 15 }}
+        />
+        <Text style={[styles.modalTitle, { color: colors.text }]}>
+          {mural.feedbackData.title}
+        </Text>
+        <Text
+          style={{ color: colors.text, textAlign: "center", marginBottom: 20 }}
+        >
+          {mural.feedbackData.message}
+        </Text>
+        <BtnAction
+          label="OK"
+          color={colors.primary}
+          txtColor={isFemale ? colors.text : "#FFF"}
+          onPress={() => mural.toggleModal("feedback", false)}
+        />
+      </GenericModal>
+
       <Modal
         animationType="slide"
         transparent={true}
@@ -303,10 +570,18 @@ export default function MuralScreen() {
           style={{ flex: 1 }}
         >
           <View style={styles.modalOverlay}>
-            <View style={[styles.modalView, { backgroundColor: colors.card }]}>
+            <View
+              style={[
+                styles.modalView,
+                {
+                  backgroundColor: colors.card,
+                  paddingBottom: insets.bottom + 20,
+                },
+              ]}
+            >
               <View style={styles.modalHeader}>
                 <Text style={[styles.modalTitle, { color: colors.text }]}>
-                  Nova Tarefa
+                  {editingId ? "Editar Tarefa" : "Nova Tarefa"}
                 </Text>
                 <TouchableOpacity
                   onPress={() => mural.toggleModal("new", false)}
@@ -343,6 +618,7 @@ export default function MuralScreen() {
                   Quem faz?
                 </Text>
                 <View style={styles.priorityRow}>
+                  {/* AGORA TODOS SÃO IGUAIS */}
                   <OptionBtn
                     selected={assignedTo === "me"}
                     label="Eu"
@@ -362,7 +638,6 @@ export default function MuralScreen() {
                     label="Juiz"
                     color="#9C27B0"
                     theme={colors}
-                    icon="gavel"
                     onPress={() => setAssignedTo("judge")}
                   />
                 </View>
@@ -448,7 +723,7 @@ export default function MuralScreen() {
                       fontSize: 16,
                     }}
                   >
-                    Lançar no Mural
+                    {editingId ? "Salvar Alterações" : "Lançar no Mural"}
                   </Text>
                 </TouchableOpacity>
                 <View style={{ height: 30 }} />
@@ -457,7 +732,7 @@ export default function MuralScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
-      {/* Modais genéricos reutilizando componentes locais */}
+
       <GenericModal
         visible={mural.modals.judge}
         onClose={() => mural.toggleModal("judge", false)}
@@ -523,34 +798,7 @@ export default function MuralScreen() {
           onPress={() => mural.toggleModal("congrats", false)}
         />
       </GenericModal>
-      <GenericModal
-        visible={mural.modals.feedback}
-        onClose={() => mural.toggleModal("feedback", false)}
-        bg={colors.card}
-      >
-        <MaterialCommunityIcons
-          name={
-            mural.feedbackData.type === "error" ? "alert-circle" : "information"
-          }
-          size={50}
-          color={mural.feedbackData.type === "error" ? "#FF5252" : "#FFCA28"}
-          style={{ marginBottom: 15 }}
-        />
-        <Text style={[styles.modalTitle, { color: colors.text }]}>
-          {mural.feedbackData.title}
-        </Text>
-        <Text
-          style={{ color: colors.text, textAlign: "center", marginBottom: 20 }}
-        >
-          {mural.feedbackData.message}
-        </Text>
-        <BtnAction
-          label="OK"
-          color={colors.primary}
-          txtColor={isFemale ? colors.text : "#FFF"}
-          onPress={() => mural.toggleModal("feedback", false)}
-        />
-      </GenericModal>
+
       <GenericModal
         visible={mural.modals.finish}
         onClose={() => mural.toggleModal("finish", false)}
@@ -624,7 +872,15 @@ const OptionBtn = ({ selected, label, color, theme, icon, onPress }: any) => (
     onPress={onPress}
     style={[
       styles.priorityBtn,
-      { borderColor: color, backgroundColor: selected ? color : "transparent" },
+      {
+        borderColor: color,
+        backgroundColor: selected ? color : "transparent",
+        // Flex 1 faz todos os botões ocuparem o mesmo espaço disponível
+        flex: 1,
+        paddingVertical: 12,
+        justifyContent: "center",
+        alignItems: "center",
+      },
     ]}
   >
     {icon && (
@@ -632,26 +888,29 @@ const OptionBtn = ({ selected, label, color, theme, icon, onPress }: any) => (
         name={icon}
         size={14}
         color={selected ? "#fff" : color}
-        style={{ marginRight: 6 }}
+        style={label ? { marginRight: 6 } : { marginRight: 0 }}
       />
     )}
-    <Text
-      style={{
-        color: selected
-          ? label === "Juiz"
-            ? "#fff"
-            : theme.text
-          : label === "Juiz"
-          ? color
-          : theme.sub,
-        fontWeight: "bold",
-        fontSize: 12,
-      }}
-    >
-      {label}
-    </Text>
+    {label ? (
+      <Text
+        style={{
+          color: selected
+            ? label === "Juiz"
+              ? "#fff"
+              : theme.text
+            : label === "Juiz"
+              ? color
+              : theme.sub,
+          fontWeight: "bold",
+          fontSize: 12,
+        }}
+      >
+        {label}
+      </Text>
+    ) : null}
   </TouchableOpacity>
 );
+
 const GenericModal = ({ visible, onClose, bg, borderColor, children }: any) => (
   <Modal
     animationType="fade"
@@ -675,6 +934,7 @@ const GenericModal = ({ visible, onClose, bg, borderColor, children }: any) => (
     </View>
   </Modal>
 );
+
 const BtnAction = ({ label, color, txtColor, onPress }: any) => (
   <TouchableOpacity
     style={[styles.saveBtn, { backgroundColor: color, width: "100%" }]}
@@ -685,6 +945,7 @@ const BtnAction = ({ label, color, txtColor, onPress }: any) => (
     </Text>
   </TouchableOpacity>
 );
+
 const styles = StyleSheet.create({
   container: { flex: 1, paddingHorizontal: 0 },
   headerRow: {
@@ -784,6 +1045,15 @@ const styles = StyleSheet.create({
     width: "100%",
     alignItems: "center",
   },
+  optionMenuBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 20,
+    borderRadius: 15,
+    width: "100%",
+    gap: 15,
+  },
+  optionMenuText: { fontSize: 16, fontWeight: "bold" },
   errorBox: {
     flexDirection: "row",
     alignItems: "center",

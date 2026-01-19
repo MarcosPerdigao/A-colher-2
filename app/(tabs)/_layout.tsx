@@ -1,61 +1,91 @@
 import React from "react";
 import { Tabs } from "expo-router";
-import { MaterialIcons, FontAwesome5 } from "@expo/vector-icons";
 import { Platform } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context"; // Ajuste do Android
+// Importando os ícones (com o Porquinho e as versões Outline/Filled)
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context"; // <--- IMPORTANTE
 import { useTheme } from "../../src/context/ThemeContext";
 
 export default function TabLayout() {
-  const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
+  const { colors, isFemale } = useTheme();
+  const insets = useSafeAreaInsets(); // <--- O DETECTOR DE BORDAS
+
+  // --- DEFINIÇÃO MANUAL DAS CORES ---
+  const ACESA = colors.primary;
+  // Se for tema claro (Ela): Cinza médio (#90A4AE)
+  // Se for tema escuro (Ele): Cinza escuro (#546E7A)
+  const APAGADA = isFemale ? "#90A4AE" : "#546E7A";
 
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
+        // Essas linhas ajudam o texto a seguir a cor certa
+        tabBarActiveTintColor: ACESA,
+        tabBarInactiveTintColor: APAGADA,
+
         tabBarStyle: {
           backgroundColor: colors.card,
-          borderTopColor: colors.border,
-          // Altura dinâmica para não ficar em cima do botão do Android
+          borderTopColor: "transparent",
+          elevation: 0,
+
+          // --- AQUI ESTÁ A MÁGICA PARA O ANDROID (S25) ---
+          // A altura total é o tamanho do menu (60) + o espaço da barra do sistema
           height: 60 + insets.bottom,
-          paddingBottom: 10 + insets.bottom,
-          elevation: 5,
+          // O padding empurra os ícones para cima da barra do sistema
+          paddingBottom: insets.bottom > 0 ? insets.bottom : 10,
+          paddingTop: 10,
         },
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.sub,
+
+        tabBarShowLabel: true,
         tabBarLabelStyle: {
-          fontWeight: "bold",
           fontSize: 12,
+          fontWeight: "bold",
+          marginBottom: 5,
         },
       }}
     >
-      {/* O 'name' aqui TEM que ser igual ao nome do arquivo .tsx */}
+      {/* 1. MURAL */}
       <Tabs.Screen
         name="mural"
         options={{
           title: "Mural",
-          tabBarIcon: ({ color, size }) => (
-            <MaterialIcons name="dashboard" size={size} color={color} />
+          tabBarIcon: ({ focused }) => (
+            <MaterialCommunityIcons
+              name={focused ? "clipboard-text" : "clipboard-text-outline"}
+              size={28}
+              color={focused ? ACESA : APAGADA}
+            />
           ),
         }}
       />
 
+      {/* 2. GRANA (Porquinho 🐷) */}
       <Tabs.Screen
         name="financeiro"
         options={{
-          title: "Grana", // O título que aparece no menu
-          tabBarIcon: ({ color, size }) => (
-            <FontAwesome5 name="piggy-bank" size={size - 4} color={color} />
+          title: "Grana",
+          tabBarIcon: ({ focused }) => (
+            <MaterialCommunityIcons
+              name={focused ? "piggy-bank" : "piggy-bank-outline"}
+              size={28}
+              color={focused ? ACESA : APAGADA}
+            />
           ),
         }}
       />
 
+      {/* 3. PERFIL */}
       <Tabs.Screen
         name="perfil"
         options={{
           title: "Perfil",
-          tabBarIcon: ({ color, size }) => (
-            <FontAwesome5 name="user-circle" size={size - 2} color={color} />
+          tabBarIcon: ({ focused }) => (
+            <MaterialCommunityIcons
+              name={focused ? "account" : "account-outline"}
+              size={28}
+              color={focused ? ACESA : APAGADA}
+            />
           ),
         }}
       />

@@ -6,6 +6,9 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
+  Image,
+  Modal,
+  FlatList,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -15,10 +18,18 @@ import {
   FontAwesome5,
   Ionicons,
   MaterialCommunityIcons,
+  AntDesign,
 } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Clipboard from "expo-clipboard";
-import { TaskService, Task } from "../../src/services/tasks";
+import * as ImagePicker from "expo-image-picker";
+
+import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { getAuth, updateProfile } from "firebase/auth";
+import { doc, updateDoc, getFirestore } from "firebase/firestore";
+
+// IMPORTAMOS A CALCULADORA DE STATUS AQUI:
+import { TaskService, Task, checkTaskStatus } from "../../src/services/tasks";
 import { AuthService } from "../../src/services/auth";
 import { CustomAlert } from "../../src/components/CustomAlert";
 import { useTheme } from "../../src/context/ThemeContext";
@@ -29,10 +40,19 @@ export default function ProfileScreen() {
   const { colors, isFemale, toggleTheme } = useTheme();
 
   const [loading, setLoading] = useState(true);
+  const [uploadingImage, setUploadingImage] = useState(false);
+
   const [nickname, setNickname] = useState("");
   const [coupleCode, setCoupleCode] = useState("");
   const [streak, setStreak] = useState("0");
   const [tasksCompleted, setTasksCompleted] = useState(0);
+
+  // --- NOVOS ESTADOS PARA O HISTÓRICO ---
+  const [tasksPendingCount, setTasksPendingCount] = useState(0);
+  const [pendingList, setPendingList] = useState<Task[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
+
+  const [profileImage, setProfileImage] = useState<string | null>(null);
   const [identityGender, setIdentityGender] = useState("masculino");
 
   const [alertConfig, setAlertConfig] = useState({
@@ -45,7 +65,7 @@ export default function ProfileScreen() {
   const showAlert = (
     title: string,
     message: string,
-    type: "success" | "error" | "info" = "info"
+    type: "success" | "error" | "info" = "info",
   ) => {
     setAlertConfig({ visible: true, title, message, type });
   };
@@ -56,6 +76,9 @@ export default function ProfileScreen() {
 
   const loadProfileData = async () => {
     try {
+      const auth = getAuth();
+      const user = auth.currentUser;
+
       const name = await AsyncStorage.getItem("@user_nickname");
       const code = await AsyncStorage.getItem("@couple_code");
       const streakVal = await AsyncStorage.getItem("@task_streak");
@@ -65,12 +88,26 @@ export default function ProfileScreen() {
       if (code) setCoupleCode(code);
       if (streakVal) setStreak(streakVal);
       if (savedIdentity) setIdentityGender(savedIdentity);
+      if (user?.photoURL) setProfileImage(user.photoURL);
 
       const unsubscribe = await TaskService.listen((tasks: Task[]) => {
-        const myTasks = tasks.filter(
-          (t) => t.completed && t.completedByNickname === name
-        );
-        setTasksCompleted(myTasks.length);
+        // Tarefas feitas por mim
+        const myCompleted = tasks.filter(
+          (t) => t.completed && t.completedByNickname === name,
+        ).length;
+
+        // --- AQUI ESTÁ A LÓGICA DA REGRA 26h ---
+        // Filtramos apenas as tarefas que não estão completas
+        // E que o status calculado seja "expired" (> 26h)
+        const expiredTasks = tasks.filter((t) => {
+          if (t.completed) return false;
+          const status = checkTaskStatus(t);
+          return status === "expired";
+        });
+
+        setTasksCompleted(myCompleted);
+        setPendingList(expiredTasks); // Lista mostra só as vencidas
+        setTasksPendingCount(expiredTasks.length); // Contador mostra só as vencidas
       });
 
       if (unsubscribe) setTimeout(() => unsubscribe(), 1000);
@@ -81,6 +118,57 @@ export default function ProfileScreen() {
     }
   };
 
+  const handlePickImage = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.5,
+      });
+
+      if (!result.canceled && result.assets[0].uri) {
+        uploadImage(result.assets[0].uri);
+      }
+    } catch (error) {
+      showAlert("Erro", "Não foi possível abrir a galeria.", "error");
+    }
+  };
+
+  const uploadImage = async (uri: string) => {
+    const auth = getAuth();
+    const user = auth.currentUser;
+    if (!user) return;
+
+    setUploadingImage(true);
+    try {
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      const storage = getStorage();
+      const storageRef = ref(
+        storage,
+        `profile_photos/${user.uid}_${Date.now()}.jpg`,
+      );
+
+      await uploadBytes(storageRef, blob);
+      const downloadUrl = await getDownloadURL(storageRef);
+
+      await updateProfile(user, { photoURL: downloadUrl });
+      const db = getFirestore();
+      await updateDoc(doc(db, "users", user.uid), {
+        photoURL: downloadUrl,
+      });
+
+      setProfileImage(downloadUrl);
+      showAlert("Sucesso", "Foto de perfil atualizada!", "success");
+    } catch (error: any) {
+      console.log(error);
+      showAlert("Erro no Upload", "Verifique o Storage.", "error");
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
   const handleCopyCode = async () => {
     await Clipboard.setStringAsync(coupleCode);
     showAlert("Copiado! 📋", "Código na área de transferência.", "success");
@@ -88,7 +176,6 @@ export default function ProfileScreen() {
 
   const handleSwitchTheme = async () => {
     await toggleTheme();
-    const newThemeName = !isFemale ? "Claro" : "Escuro";
     showAlert("Tema Alterado", `Visual alterado.`, "success");
   };
 
@@ -96,6 +183,36 @@ export default function ProfileScreen() {
     await AuthService.logout();
     router.replace("/");
   };
+
+  // --- RENDERIZADORES DE TAREFA PENDENTE ---
+  const renderPendingTask = ({ item }: { item: Task }) => (
+    <View
+      style={[
+        styles.historyItem,
+        // Borda vermelha para indicar que estourou o prazo
+        {
+          borderLeftColor: "#D32F2F",
+          backgroundColor: "rgba(211, 47, 47, 0.05)",
+        },
+      ]}
+    >
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.historyTitle, { color: colors.text }]}>
+          {item.title}
+        </Text>
+        <Text
+          style={[styles.historyDate, { color: "#EF5350", fontWeight: "bold" }]}
+        >
+          Venceu em: {item.date || "Data desconhecida"}
+        </Text>
+      </View>
+      <MaterialCommunityIcons
+        name="emoticon-sad-outline"
+        size={28}
+        color="#D32F2F"
+      />
+    </View>
+  );
 
   if (loading) {
     return (
@@ -140,11 +257,32 @@ export default function ProfileScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={[styles.card, { backgroundColor: colors.card }]}>
-          <View style={[styles.avatar, { backgroundColor: colors.primary }]}>
-            <Text style={{ fontSize: 45 }}>
-              {identityGender === "feminino" ? "👩‍🦰" : "🧔"}
-            </Text>
-          </View>
+          <TouchableOpacity
+            onPress={handlePickImage}
+            disabled={uploadingImage}
+            style={{ position: "relative" }}
+          >
+            <View style={[styles.avatar, { backgroundColor: colors.primary }]}>
+              {uploadingImage ? (
+                <ActivityIndicator color="#FFF" />
+              ) : profileImage ? (
+                <Image
+                  source={{ uri: profileImage }}
+                  style={styles.avatarImage}
+                />
+              ) : (
+                <Text style={{ fontSize: 45 }}>
+                  {identityGender === "feminino" ? "👩‍🦰" : "🧔"}
+                </Text>
+              )}
+            </View>
+            <View
+              style={[styles.editIconBadge, { backgroundColor: colors.accent }]}
+            >
+              <MaterialIcons name="edit" size={14} color="#FFF" />
+            </View>
+          </TouchableOpacity>
+
           <Text style={[styles.name, { color: colors.text }]}>{nickname}</Text>
 
           <TouchableOpacity
@@ -172,6 +310,7 @@ export default function ProfileScreen() {
         <Text style={[styles.sectionTitle, { color: colors.sub }]}>
           ESTATÍSTICAS
         </Text>
+
         <View style={styles.statsRow}>
           <View style={[styles.statCard, { backgroundColor: colors.card }]}>
             <MaterialIcons
@@ -182,7 +321,7 @@ export default function ProfileScreen() {
             <Text style={[styles.statNumber, { color: colors.text }]}>
               {streak}
             </Text>
-            <Text style={styles.statLabel}>Sequência</Text>
+            <Text style={styles.statLabel}>Dias Seguidos</Text>
           </View>
 
           <View style={[styles.statCard, { backgroundColor: colors.card }]}>
@@ -194,8 +333,24 @@ export default function ProfileScreen() {
             <Text style={[styles.statNumber, { color: colors.text }]}>
               {tasksCompleted}
             </Text>
-            <Text style={styles.statLabel}>Tarefas Feitas</Text>
+            <Text style={styles.statLabel}>Concluídas</Text>
           </View>
+
+          {/* CARD CLICÁVEL "EM ABERTO" (Agora mostra só as Expiradas) */}
+          <TouchableOpacity
+            style={[styles.statCard, { backgroundColor: colors.card }]}
+            onPress={() => setShowHistory(true)}
+          >
+            <MaterialCommunityIcons
+              name="alert-circle-outline"
+              size={28}
+              color="#D32F2F"
+            />
+            <Text style={[styles.statNumber, { color: colors.text }]}>
+              {tasksPendingCount}
+            </Text>
+            <Text style={styles.statLabel}>Penalidades</Text>
+          </TouchableOpacity>
         </View>
 
         <Text
@@ -227,7 +382,6 @@ export default function ProfileScreen() {
           </View>
           <MaterialIcons name="chevron-right" size={24} color={colors.sub} />
         </TouchableOpacity>
-        {/* ... Botão Alterar Tema acima ... */}
 
         <TouchableOpacity
           style={[
@@ -256,13 +410,63 @@ export default function ProfileScreen() {
           <MaterialIcons name="chevron-right" size={24} color={colors.sub} />
         </TouchableOpacity>
 
-        {/* ... Botão Logout abaixo ... */}
         <TouchableOpacity style={[styles.logoutBtn]} onPress={handleLogout}>
           <Text style={styles.logoutText}>Sair do App</Text>
         </TouchableOpacity>
 
-        <View style={{ height: 50 }} />
+        {/* --- COPYRIGHT FOOTER --- */}
+        <View style={styles.footerContainer}>
+          <Text style={styles.copyrightText}>
+            Desenvolvido com ❤️ por Marcos & Mel
+          </Text>
+          <Text style={styles.copyrightSub}>
+            © 2026 A Colher. Todos os direitos reservados.
+          </Text>
+        </View>
+
+        <View style={{ height: 100 }} />
       </ScrollView>
+
+      {/* --- MODAL DE HISTÓRICO DE PENALIDADES --- */}
+      <Modal visible={showHistory} animationType="slide" transparent={true}>
+        <View style={styles.modalOverlay}>
+          <View
+            style={[
+              styles.modalContent,
+              {
+                backgroundColor: colors.card,
+                paddingBottom: insets.bottom + 20,
+              },
+            ]}
+          >
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>
+                Tarefas Perdidas (+26h)
+              </Text>
+              <TouchableOpacity onPress={() => setShowHistory(false)}>
+                <AntDesign name="close" size={24} color={colors.sub} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={{ color: colors.sub, marginBottom: 15 }}>
+              Estas tarefas contaram pontos negativos na gamificação:
+            </Text>
+
+            <FlatList
+              data={pendingList}
+              keyExtractor={(item) => item.id}
+              renderItem={renderPendingTask}
+              ListEmptyComponent={
+                <View style={{ padding: 20, alignItems: "center" }}>
+                  <Text style={{ color: colors.sub }}>
+                    Tudo limpo! Nenhuma penalidade. 🎉
+                  </Text>
+                </View>
+              }
+            />
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -286,12 +490,29 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   avatar: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 15,
+    overflow: "hidden",
+  },
+  avatarImage: {
+    width: "100%",
+    height: "100%",
+  },
+  editIconBadge: {
+    position: "absolute",
+    bottom: 15,
+    right: 0,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "#FFF",
   },
   name: { fontSize: 24, fontWeight: "bold", marginBottom: 15 },
   codeContainer: {
@@ -307,16 +528,18 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     marginBottom: 10,
+    gap: 10,
   },
   statCard: {
-    flex: 0.48,
+    flex: 1,
     borderRadius: 20,
-    padding: 20,
+    paddingVertical: 20,
+    paddingHorizontal: 5,
     alignItems: "center",
     elevation: 2,
   },
-  statNumber: { fontSize: 24, fontWeight: "bold", marginTop: 8 },
-  statLabel: { fontSize: 12, color: "#888", marginTop: 2 },
+  statNumber: { fontSize: 22, fontWeight: "bold", marginTop: 8 },
+  statLabel: { fontSize: 11, color: "#888", marginTop: 2, textAlign: "center" },
   optionButton: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -343,4 +566,61 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255, 82, 82, 0.05)",
   },
   logoutText: { color: "#FF5252", fontWeight: "bold", fontSize: 16 },
+
+  footerContainer: {
+    marginTop: 40,
+    alignItems: "center",
+    opacity: 0.6,
+  },
+  copyrightText: {
+    fontSize: 12,
+    color: "#888",
+    fontWeight: "bold",
+  },
+  copyrightSub: {
+    fontSize: 10,
+    color: "#999",
+    marginTop: 2,
+  },
+
+  // Modal History Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+  },
+  modalContent: {
+    borderTopLeftRadius: 25,
+    borderTopRightRadius: 25,
+    padding: 20,
+    maxHeight: "80%",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+  },
+  historyItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.05)",
+    padding: 15,
+    borderRadius: 12,
+    marginBottom: 10,
+    borderLeftWidth: 4,
+  },
+  historyTitle: {
+    fontSize: 16,
+    fontWeight: "bold",
+  },
+  historyDate: {
+    fontSize: 12,
+    color: "#888",
+    marginTop: 4,
+  },
 });

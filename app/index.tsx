@@ -16,10 +16,12 @@ import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { doc, getDoc, getFirestore } from "firebase/firestore";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
 import { AuthService } from "../src/services/auth";
 import { CustomAlert } from "../src/components/CustomAlert";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "../src/context/ThemeContext";
+import { registerForPushNotificationsAsync } from "../src/services/notifications";
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -34,12 +36,10 @@ export default function LoginScreen() {
     type: "info" as any,
   });
 
-  // Auth Inputs
   const [isRegistering, setIsRegistering] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  // Setup Inputs
   const [nickname, setNickname] = useState("");
   const [sexo, setSexo] = useState<"masculino" | "feminino">("masculino");
   const [setupMode, setSetupMode] = useState<"create" | "join">("create");
@@ -50,9 +50,31 @@ export default function LoginScreen() {
   const showAlert = (
     title: string,
     message: string,
-    type: "success" | "error" | "info" = "info"
+    type: "success" | "error" | "info" = "info",
   ) => {
     setAlertConfig({ visible: true, title, message, type });
+  };
+
+  // --- TRADUTOR DE ERROS DO FIREBASE ---
+  const getFriendlyErrorMessage = (errorCode: string) => {
+    switch (errorCode) {
+      case "auth/invalid-email":
+        return "O formato do e-mail está inválido.";
+      case "auth/user-disabled":
+        return "Este usuário foi desativado.";
+      case "auth/user-not-found":
+      case "auth/wrong-password":
+      case "auth/invalid-credential":
+        return "E-mail ou senha incorretos."; // Mensagem genérica para segurança
+      case "auth/email-already-in-use":
+        return "Este e-mail já está sendo usado.";
+      case "auth/weak-password":
+        return "A senha precisa ter pelo menos 6 caracteres.";
+      case "auth/missing-password":
+        return "Você esqueceu de digitar a senha.";
+      default:
+        return "Ocorreu um erro inesperado. Tente novamente.";
+    }
   };
 
   const handleDateChange = (text: string, setter: (val: string) => void) => {
@@ -63,42 +85,43 @@ export default function LoginScreen() {
     else setter(cleaned);
   };
 
-  // --- LÓGICA DE INICIALIZAÇÃO CORRIGIDA ---
   useEffect(() => {
     let unsubscribeAuth: (() => void) | undefined;
 
     const checkFlow = async () => {
       try {
-        // 1. Verifica se já viu o tutorial
         const hasSeenTutorial = await AsyncStorage.getItem(
-          "@app_has_seen_tutorial"
+          "@app_has_seen_tutorial",
         );
 
         if (!hasSeenTutorial) {
-          // Se não viu, vai pro Tutorial
           setLoading(false);
           router.replace("/onboarding");
           return;
         }
 
-        // 2. Se já viu, verifica o Login
         unsubscribeAuth = AuthService.onStateChanged(async (user) => {
           if (user) {
             const userData = await AuthService.syncUserData(user.uid);
 
             if (userData && userData.coupleCode) {
-              // Usuário com perfil completo -> Vai pro Mural
               const savedTheme = await AsyncStorage.getItem("@app_theme");
               const themeToUse = savedTheme || userData.sexo || "masculino";
               await setTheme(themeToUse as any);
+
+              // Tenta registrar notificação silenciosamente ao entrar
+              registerForPushNotificationsAsync().then((token) => {
+                if (token && user.uid) {
+                  AuthService.updatePushToken(user.uid, token);
+                }
+              });
+
               router.replace("/mural");
             } else {
-              // Logado mas sem perfil -> Vai pro Setup
               setViewState("setup");
               setLoading(false);
             }
           } else {
-            // Não logado -> Mostra Login
             setViewState("auth");
             setLoading(false);
           }
@@ -115,18 +138,23 @@ export default function LoginScreen() {
       if (unsubscribeAuth) unsubscribeAuth();
     };
   }, []);
-  // ----------------------------------------
 
   const handleAuth = async () => {
     if (!email || !password)
       return showAlert("Ops", "Preencha email e senha.", "error");
+
     setLoading(true);
     try {
+      // Pedimos permissão de notificação ANTES de tentar logar/criar
+      // Isso garante que o popup apareça no momento de ação do usuário
+      await registerForPushNotificationsAsync();
+
       if (isRegistering) await AuthService.register(email, password);
       else await AuthService.login(email, password);
-      // O useEffect vai capturar a mudança de estado e redirecionar
     } catch (error: any) {
-      showAlert("Erro", error.message, "error");
+      // Aqui usamos nosso tradutor
+      const friendlyMsg = getFriendlyErrorMessage(error.code || error.message);
+      showAlert("Atenção", friendlyMsg, "error");
       setLoading(false);
     }
   };
@@ -144,11 +172,11 @@ export default function LoginScreen() {
   const handleCoupleSetup = async () => {
     if (!nickname) return showAlert("Ops", "Escolha um apelido!", "error");
     if (birthDate.length !== 5)
-      return showAlert("Ops", "Preencha seu nascimento (Dia/Mês)", "error");
+      return showAlert("Ops", "Preencha nascimento", "error");
     if (anniversaryDate.length !== 5)
-      return showAlert("Ops", "Preencha o niver de namoro (Dia/Mês)", "error");
+      return showAlert("Ops", "Preencha namoro", "error");
     if (setupMode === "join" && !partnerCode)
-      return showAlert("Ops", "Digite o código do parceiro!", "error");
+      return showAlert("Ops", "Digite o código!", "error");
 
     setLoading(true);
     try {
@@ -172,14 +200,13 @@ export default function LoginScreen() {
         finalCode,
         setupMode,
         birthDate,
-        anniversaryDate
+        anniversaryDate,
       );
-
       await setTheme(sexo);
 
       if (setupMode === "create") {
         setLoading(false);
-        showAlert("Sucesso!", "Código criado com sucesso.", "success");
+        showAlert("Sucesso!", "Código criado.", "success");
         setTimeout(() => handleShareCode(finalCode), 1000);
         router.replace("/mural");
       } else {
@@ -216,7 +243,6 @@ export default function LoginScreen() {
         type={alertConfig.type}
         onClose={() => setAlertConfig((prev) => ({ ...prev, visible: false }))}
       />
-
       <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
         {viewState === "auth" && (
           <View style={[styles.container, { backgroundColor: "#121212" }]}>
@@ -245,6 +271,7 @@ export default function LoginScreen() {
                 secureTextEntry
                 value={password}
                 onChangeText={setPassword}
+                autoCapitalize="none" // <--- AQUI ESTÁ A CORREÇÃO DO TECLADO
               />
               <TouchableOpacity style={styles.mainButton} onPress={handleAuth}>
                 <Text style={styles.btnText}>
@@ -261,7 +288,6 @@ export default function LoginScreen() {
             </View>
           </View>
         )}
-
         {viewState === "setup" && (
           <View
             style={[
@@ -292,7 +318,6 @@ export default function LoginScreen() {
               >
                 Configure seu perfil
               </Text>
-
               <View style={styles.switchContainer}>
                 <TouchableOpacity
                   onPress={() => setSexo("masculino")}
@@ -331,7 +356,6 @@ export default function LoginScreen() {
                   </Text>
                 </TouchableOpacity>
               </View>
-
               <TextInput
                 placeholder="Seu Apelido"
                 placeholderTextColor="#999"
@@ -339,7 +363,6 @@ export default function LoginScreen() {
                 value={nickname}
                 onChangeText={setNickname}
               />
-
               <View style={{ flexDirection: "row", gap: 10, width: "100%" }}>
                 <TextInput
                   placeholder="Nasc. (DD/MM)"
@@ -360,7 +383,6 @@ export default function LoginScreen() {
                   onChangeText={(t) => handleDateChange(t, setAnniversaryDate)}
                 />
               </View>
-
               {setupMode === "join" && (
                 <TextInput
                   placeholder="Código do Parceiro(a)"
@@ -371,7 +393,6 @@ export default function LoginScreen() {
                   onChangeText={setPartnerCode}
                 />
               )}
-
               <TouchableOpacity
                 style={[
                   styles.mainButton,
@@ -470,6 +491,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
     textDecorationLine: "underline",
     color: "#90A4AE",
+    marginBottom: 20, // Aumentei um pouco aqui para dar margem embaixo no scroll
   },
   switchContainer: {
     flexDirection: "row",

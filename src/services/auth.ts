@@ -8,7 +8,7 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { doc, getDoc, setDoc, updateDoc, arrayUnion } from "firebase/firestore";
 
-// IMPORTA A CONFIGURAÇÃO CENTRALIZADA (Aqui está a correção!)
+// AJUSTE DO CAMINHO: Geralmente é "../" se o config estiver em src/
 import { auth, db } from "../../firebaseConfig";
 
 export const AuthService = {
@@ -104,5 +104,17 @@ export const AuthService = {
     await AsyncStorage.setItem("@user_identity", sexo);
     await AsyncStorage.setItem("@app_theme", sexo);
     await AsyncStorage.setItem("@couple_code", coupleCode);
+  },
+
+  updatePushToken: async (uid: string, token: string) => {
+    try {
+      await updateDoc(doc(db, "users", uid), {
+        pushToken: token,
+        lastLogin: new Date().toISOString(),
+      });
+      console.log("🔥 Token salvo no Firestore!");
+    } catch (error) {
+      console.log("Erro ao salvar token:", error);
+    }
   },
 };

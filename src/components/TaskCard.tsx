@@ -1,122 +1,170 @@
 import React from "react";
-import { View, Text, TouchableOpacity, Image, StyleSheet } from "react-native";
-import { MaterialIcons } from "@expo/vector-icons";
-import { Task } from "../services/tasks";
-
-interface Props {
-  item: Task & {
-    photo?: string;
-    assignedToNickname?: string;
-    completedByNickname?: string;
-    completedAt?: string;
-  };
-  theme: any;
-  onPress: () => void;
-  onLongPress: () => void;
-  myNickname: string;
-  formatDate: (date?: string) => string;
-}
-
-const priorityColors = { high: "#EF5350", medium: "#FFCA28", low: "#66BB6A" };
+import { View, Text, StyleSheet, TouchableOpacity, Image } from "react-native";
+import { FontAwesome5, MaterialCommunityIcons } from "@expo/vector-icons";
 
 export default function TaskCard({
   item,
   theme,
-  onPress,
-  onLongPress,
   myNickname,
   formatDate,
-}: Props) {
+  onPress,
+  onLongPress,
+  myPhoto,
+  partnerPhoto,
+}: any) {
+  // Verifica se foi criado pelo Juiz
+  const isJudgeTask = item.createdBy === "Juiz";
+
+  // Define quem é o responsável visualmente
+  const isMyTask =
+    item.assignedToNickname === "me" || item.assignedToNickname === myNickname;
+
+  // Foto de quem deve fazer a tarefa
+  const assignedPhoto = isMyTask ? myPhoto : partnerPhoto;
+
+  // --- CORES DE PRIORIDADE ---
+  const getPriorityColor = () => {
+    switch (item.priority) {
+      case "high":
+        return "#FF5252"; // Vermelho Urgente
+      case "medium":
+        return "#FFCA28"; // Amarelo Atenção
+      case "low":
+        return "#66BB6A"; // Verde Tranquilo
+      default:
+        return theme.sub; // Cinza (sem prioridade)
+    }
+  };
+
+  const priorityColor = getPriorityColor();
+
   return (
     <TouchableOpacity
       style={[
-        styles.taskCard,
+        styles.card,
         {
           backgroundColor: theme.card,
-          borderLeftColor: priorityColors[item.priority || "medium"],
+          // BORDA ROXA SE FOR JUIZ, CINZA SE FOR NORMAL
+          borderColor: isJudgeTask ? "#9C27B0" : theme.border,
+          borderWidth: isJudgeTask ? 1.5 : 1, // Juiz ganha borda mais grossa
+
+          // --- AQUI ESTÁ A MUDANÇA: FAIXA LATERAL EVIDENTE ---
           borderLeftWidth: 6,
+          borderLeftColor: priorityColor,
+          // ---------------------------------------------------
+
+          opacity: item.completed ? 0.6 : 1,
         },
       ]}
       onPress={onPress}
       onLongPress={onLongPress}
+      activeOpacity={0.7}
     >
-      <View style={{ flex: 1 }}>
+      {/* HEADER: Data e Avatar */}
+      <View style={styles.header}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          {/* Removi a bolinha, pois a barra lateral já diz a cor */}
+
+          <Text style={[styles.date, { color: theme.sub }]}>
+            {item.date || "Sem data"}
+          </Text>
+        </View>
+
+        {/* Mostra avatar de quem deve fazer (se não estiver concluída) */}
+        {!item.completed && assignedPhoto ? (
+          <Image source={{ uri: assignedPhoto }} style={styles.miniAvatar} />
+        ) : !item.completed ? (
+          <Text style={{ fontSize: 10, color: theme.sub, fontWeight: "bold" }}>
+            {isMyTask ? "VOCÊ" : item.assignedToNickname}
+          </Text>
+        ) : null}
+
+        {/* Se estiver concluída, mostra check */}
+        {item.completed && (
+          <MaterialCommunityIcons
+            name="check-circle"
+            size={20}
+            color={theme.success}
+          />
+        )}
+      </View>
+
+      {/* BODY: Título e Obs */}
+      <View style={{ marginTop: 8 }}>
         <Text
           style={[
-            styles.taskText,
-            { color: theme.text },
-            item.completed && styles.taskTextDone,
+            styles.title,
+            {
+              color: theme.text,
+              textDecorationLine: item.completed ? "line-through" : "none",
+            },
           ]}
+          numberOfLines={2}
         >
           {item.title}
         </Text>
-        <View style={{ marginLeft: 15, marginTop: 4 }}>
-          {item.observation ? (
-            <Text style={{ color: theme.sub, fontSize: 12, marginBottom: 2 }}>
-              📝 {item.observation}
-            </Text>
-          ) : null}
-          <Text style={{ color: theme.sub, fontSize: 12 }}>📅 {item.date}</Text>
-
-          {!item.completed && item.assignedToNickname ? (
-            <Text
-              style={{
-                color: theme.primary,
-                fontWeight: "bold",
-                fontSize: 12,
-                marginTop: 4,
-              }}
-            >
-              👤 Para:{" "}
-              {item.assignedToNickname === myNickname
-                ? "Você"
-                : item.assignedToNickname}
-            </Text>
-          ) : null}
-
-          {item.completed && item.completedByNickname ? (
-            <Text
-              style={{
-                color: theme.success,
-                fontWeight: "bold",
-                fontSize: 12,
-                marginTop: 4,
-              }}
-            >
-              ✅ Feito por: {item.completedByNickname} -{" "}
-              {formatDate(item.completedAt)}
-            </Text>
-          ) : null}
-        </View>
+        {item.observation ? (
+          <Text style={[styles.obs, { color: theme.sub }]} numberOfLines={1}>
+            {item.observation}
+          </Text>
+        ) : null}
       </View>
-      {item.photo ? (
-        <Image
-          source={{ uri: item.photo }}
-          style={{ width: 45, height: 45, borderRadius: 10 }}
-        />
-      ) : (
-        <MaterialIcons
-          name={item.completed ? "check-circle" : "panorama-fish-eye"}
-          size={28}
-          color={item.completed ? "#81C784" : theme.sub}
-        />
+
+      {/* FOOTER: Concluído por... */}
+      {item.completed && (
+        <View
+          style={{
+            marginTop: 10,
+            paddingTop: 10,
+            borderTopWidth: 1,
+            borderTopColor: theme.bg,
+          }}
+        >
+          <Text style={{ fontSize: 10, color: theme.sub }}>
+            Feito por{" "}
+            {item.completedByNickname === myNickname
+              ? "mim"
+              : item.completedByNickname}{" "}
+            às {formatDate(item.completedAt)}
+          </Text>
+        </View>
       )}
     </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
-  taskCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 15,
-    borderRadius: 20,
+  card: {
+    padding: 16,
+    borderRadius: 12, // Diminuí um pouco o raio para combinar com a barra lateral
     marginBottom: 12,
     elevation: 2,
     shadowColor: "#000",
-    shadowOpacity: 0.1,
     shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
   },
-  taskText: { fontSize: 16, fontWeight: "700", marginLeft: 15 },
-  taskTextDone: { textDecorationLine: "line-through", opacity: 0.4 },
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  date: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  title: {
+    fontSize: 16,
+    fontWeight: "bold",
+  },
+  obs: {
+    fontSize: 12,
+    marginTop: 4,
+  },
+  miniAvatar: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "#eee",
+  },
 });

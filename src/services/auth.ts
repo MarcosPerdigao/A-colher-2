@@ -6,9 +6,14 @@ import {
   User,
 } from "firebase/auth";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { doc, getDoc, setDoc, updateDoc, arrayUnion } from "firebase/firestore";
-
-// AJUSTE DO CAMINHO: Geralmente é "../" se o config estiver em src/
+import {
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  arrayUnion,
+  arrayRemove,
+} from "firebase/firestore";
 import { auth, db } from "../../firebaseConfig";
 
 export const AuthService = {
@@ -23,7 +28,7 @@ export const AuthService = {
       const userCredential = await signInWithEmailAndPassword(
         auth,
         email,
-        pass
+        pass,
       );
       await AuthService.syncUserData(userCredential.user.uid);
       return userCredential.user;
@@ -37,7 +42,7 @@ export const AuthService = {
       const userCredential = await createUserWithEmailAndPassword(
         auth,
         email,
-        pass
+        pass,
       );
       return userCredential.user;
     } catch (error: any) {
@@ -75,31 +80,41 @@ export const AuthService = {
     coupleCode: string,
     mode: "create" | "join",
     birthDate: string,
-    anniversaryDate: string
+    anniversaryDate: string,
   ) => {
-    await setDoc(doc(db, "users", uid), {
-      email: auth.currentUser?.email,
-      nickname,
-      sexo,
-      coupleCode,
-      birthDate,
-      anniversaryDate,
-      createdAt: new Date().toISOString(),
-    });
+    // 1. Salva dados do Usuário (Aqui usamos setDoc com merge, então OK)
+    await setDoc(
+      doc(db, "users", uid),
+      {
+        email: auth.currentUser?.email,
+        nickname,
+        sexo,
+        coupleCode,
+        birthDate,
+        anniversaryDate,
+        createdAt: new Date().toISOString(),
+      },
+      { merge: true },
+    );
 
+    // 2. Atualiza ou Cria o Casal
     const coupleRef = doc(db, "couples", coupleCode);
-    const coupleData: any = {
-      users: mode === "create" ? [uid] : arrayUnion(uid),
-    };
+    const coupleSnap = await getDoc(coupleRef);
 
-    if (mode === "create") {
-      coupleData.createdAt = new Date().toISOString();
-      coupleData.anniversaryDate = anniversaryDate;
-      await setDoc(coupleRef, coupleData);
+    if (mode === "create" && !coupleSnap.exists()) {
+      await setDoc(coupleRef, {
+        users: [uid],
+        createdAt: new Date().toISOString(),
+        anniversaryDate: anniversaryDate,
+        createdBy: uid,
+      });
     } else {
-      await updateDoc(coupleRef, coupleData);
+      await updateDoc(coupleRef, {
+        users: arrayUnion(uid),
+      });
     }
 
+    // 3. Salva Localmente
     await AsyncStorage.setItem("@user_nickname", nickname);
     await AsyncStorage.setItem("@user_identity", sexo);
     await AsyncStorage.setItem("@app_theme", sexo);
@@ -108,6 +123,7 @@ export const AuthService = {
 
   updatePushToken: async (uid: string, token: string) => {
     try {
+      // CORREÇÃO AQUI: updateDoc recebe apenas 2 argumentos.
       await updateDoc(doc(db, "users", uid), {
         pushToken: token,
         lastLogin: new Date().toISOString(),
@@ -116,5 +132,44 @@ export const AuthService = {
     } catch (error) {
       console.log("Erro ao salvar token:", error);
     }
+  },
+
+  // --- FUNÇÃO: DETALHES DO CASAL ---
+  getCoupleDetails: async (coupleCode: string) => {
+    try {
+      const coupleRef = doc(db, "couples", coupleCode);
+      const coupleSnap = await getDoc(coupleRef);
+
+      if (coupleSnap.exists()) {
+        const data = coupleSnap.data();
+        const userIds = data.users || [];
+
+        // Busca os nomes dos usuários
+        const names = [];
+        for (const uid of userIds) {
+          const uDoc = await getDoc(doc(db, "users", uid));
+          if (uDoc.exists()) {
+            names.push(uDoc.data().nickname);
+          }
+        }
+        return { users: userIds, names };
+      }
+      return null;
+    } catch (error) {
+      return null;
+    }
+  },
+
+  // --- FUNÇÃO: SAIR DO CASAL ---
+  leaveCouple: async (uid: string, coupleCode: string) => {
+    const coupleRef = doc(db, "couples", coupleCode);
+    await updateDoc(coupleRef, {
+      users: arrayRemove(uid),
+    });
+    const userRef = doc(db, "users", uid);
+    await updateDoc(userRef, {
+      coupleCode: null,
+    });
+    await AsyncStorage.removeItem("@couple_code");
   },
 };

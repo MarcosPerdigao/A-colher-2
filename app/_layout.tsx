@@ -1,7 +1,13 @@
 import React, { useEffect, useState } from "react";
-import { View, ActivityIndicator } from "react-native";
-import { Stack, useRouter, useSegments } from "expo-router";
+import { View, ActivityIndicator, Platform } from "react-native"; // <--- Add Platform
+import {
+  Stack,
+  useRouter,
+  useSegments,
+  useRootNavigationState,
+} from "expo-router";
 import { onAuthStateChanged, User } from "firebase/auth";
+import * as NavigationBar from "expo-navigation-bar"; // <--- Add a Lib aqui
 import { auth } from "../firebaseConfig";
 import { ThemeProvider } from "../src/context/ThemeContext";
 
@@ -10,7 +16,18 @@ export default function RootLayout() {
   const [user, setUser] = useState<User | null>(null);
   const router = useRouter();
   const segments = useSegments();
+  const navigationState = useRootNavigationState();
 
+  // 1. BLINDAGEM DA BARRA (ANDROID) - Para atender os dois temas sem piscar branco
+  useEffect(() => {
+    if (Platform.OS === "android") {
+      // Define a base como escura para não dar conflito com o teclado
+      NavigationBar.setBackgroundColorAsync("#121212");
+      NavigationBar.setButtonStyleAsync("light");
+    }
+  }, []);
+
+  // 2. OUVINTE DO FIREBASE
   useEffect(() => {
     const subscriber = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
@@ -19,32 +36,34 @@ export default function RootLayout() {
     return subscriber;
   }, []);
 
-  // --- O GUARDA DE TRÂNSITO CORRIGIDO 👮‍♂️ ---
+  // 3. O GUARDA DE TRÂNSITO BLINDADO
   useEffect(() => {
     if (initializing) return;
+    if (!navigationState?.key) return;
 
     const inAuthGroup = segments[0] === "(tabs)";
-    // Nova regra: Verifica se o usuário está no onboarding
     const inOnboarding = segments[0] === "onboarding";
+    const inVincular = segments[0] === "vincular";
 
-    if (user && !inAuthGroup && !inOnboarding) {
-      // Se tá logado, NÃO tá nas abas E NÃO tá no tutorial -> Manda pro Mural
-      // (Isso impede que ele volte pra tela de login, mas deixa ele ver o tutorial)
+    // Verificação de Raiz segura
+    const isAtRoot = !segments[0];
+
+    if (user && !inAuthGroup && !inOnboarding && !inVincular && !isAtRoot) {
       router.replace("/(tabs)/mural");
     } else if (!user && inAuthGroup) {
-      // Se NÃO tá logado e tenta entrar no Mural -> Chuta pro Login
       router.replace("/");
     }
-  }, [user, initializing, segments]);
+  }, [user, initializing, segments, navigationState?.key]);
 
-  if (initializing) {
+  // Tela de Carregamento
+  if (initializing || !navigationState?.key) {
     return (
       <View
         style={{
           flex: 1,
           justifyContent: "center",
           alignItems: "center",
-          backgroundColor: "#121212",
+          backgroundColor: "#121212", // Fundo escuro para combinar com a barra
         }}
       >
         <ActivityIndicator size="large" color="#FFD1DC" />
@@ -55,7 +74,7 @@ export default function RootLayout() {
   return (
     <ThemeProvider>
       <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="login" />
+        <Stack.Screen name="index" />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen
           name="onboarding"
@@ -65,6 +84,7 @@ export default function RootLayout() {
             animation: "slide_from_bottom",
           }}
         />
+        <Stack.Screen name="vincular" options={{ headerShown: false }} />
       </Stack>
     </ThemeProvider>
   );

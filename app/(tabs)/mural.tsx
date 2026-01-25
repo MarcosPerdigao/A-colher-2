@@ -75,18 +75,31 @@ export default function MuralScreen() {
   const [myPhoto, setMyPhoto] = useState<string | null>(null);
   const [partnerPhoto, setPartnerPhoto] = useState<string | null>(null);
 
+  // --- AQUI ESTÁ A LÓGICA DE TESTE (LOOPBACK) ---
   const notifyPartner = async (
     title: string,
     body: string,
     targetRole: "partner" | "judge" | "me",
   ) => {
     try {
-      if (targetRole === "me") return;
-      const partnerToken = await TaskService.getPartnerToken(mural.myNickname);
-      if (partnerToken) {
-        await sendPushNotification(partnerToken, title, body, {
+      // 1. DESATIVAR O BLOQUEIO DE AUTO-NOTIFICAÇÃO (COMENTADO PARA TESTE)
+      // if (targetRole === "me") return;
+
+      console.log("🔔 MODO TESTE: Enviando notificação para mim mesmo...");
+
+      // 2. EM VEZ DE PEGAR O DO PARCEIRO, PEGA O SEU (COMENTADO ORIGINAL)
+      // const partnerToken = await TaskService.getPartnerToken(mural.myNickname);
+
+      // 3. USE A NOVA FUNÇÃO QUE CRIAMOS PARA PEGAR SEU PRÓPRIO TOKEN
+      const myToken = await TaskService.getToken(mural.myNickname);
+
+      if (myToken) {
+        await sendPushNotification(myToken, title, body, {
           screen: "mural",
         });
+        console.log("✅ Notificação enviada para o meu token!");
+      } else {
+        console.log("❌ Token não encontrado.");
       }
     } catch (e) {
       console.log("Erro ao notificar:", e);

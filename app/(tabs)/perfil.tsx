@@ -28,11 +28,14 @@ import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { getAuth, updateProfile } from "firebase/auth";
 import { doc, updateDoc, getFirestore } from "firebase/firestore";
 
-// IMPORTAMOS A CALCULADORA DE STATUS AQUI:
 import { TaskService, Task, checkTaskStatus } from "../../src/services/tasks";
 import { AuthService } from "../../src/services/auth";
 import { CustomAlert } from "../../src/components/CustomAlert";
 import { useTheme } from "../../src/context/ThemeContext";
+
+// IMPORTS DO FINANCEIRO
+import { FinanceConfigModal } from "../../src/components/FinanceConfigModal";
+import { FinanceService } from "../../src/services/finance";
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
@@ -47,7 +50,7 @@ export default function ProfileScreen() {
   const [streak, setStreak] = useState("0");
   const [tasksCompleted, setTasksCompleted] = useState(0);
 
-  // --- NOVOS ESTADOS PARA O HISTÓRICO ---
+  // HISTÓRICO
   const [tasksPendingCount, setTasksPendingCount] = useState(0);
   const [pendingList, setPendingList] = useState<Task[]>([]);
   const [showHistory, setShowHistory] = useState(false);
@@ -61,6 +64,21 @@ export default function ProfileScreen() {
     message: "",
     type: "info" as any,
   });
+
+  // --- LÓGICA DO FINANCEIRO ---
+  const [showFinanceModal, setShowFinanceModal] = useState(false);
+  const [currentSettings, setCurrentSettings] = useState<any>(null);
+  const [loadingSettings, setLoadingSettings] = useState(false);
+
+  const handleOpenFinanceSettings = async () => {
+    setLoadingSettings(true);
+    const settings = await FinanceService.getSettings();
+    if (settings) {
+      setCurrentSettings(settings);
+    }
+    setLoadingSettings(false);
+    setShowFinanceModal(true);
+  };
 
   const showAlert = (
     title: string,
@@ -91,14 +109,10 @@ export default function ProfileScreen() {
       if (user?.photoURL) setProfileImage(user.photoURL);
 
       const unsubscribe = await TaskService.listen((tasks: Task[]) => {
-        // Tarefas feitas por mim
         const myCompleted = tasks.filter(
           (t) => t.completed && t.completedByNickname === name,
         ).length;
 
-        // --- AQUI ESTÁ A LÓGICA DA REGRA 26h ---
-        // Filtramos apenas as tarefas que não estão completas
-        // E que o status calculado seja "expired" (> 26h)
         const expiredTasks = tasks.filter((t) => {
           if (t.completed) return false;
           const status = checkTaskStatus(t);
@@ -106,8 +120,8 @@ export default function ProfileScreen() {
         });
 
         setTasksCompleted(myCompleted);
-        setPendingList(expiredTasks); // Lista mostra só as vencidas
-        setTasksPendingCount(expiredTasks.length); // Contador mostra só as vencidas
+        setPendingList(expiredTasks);
+        setTasksPendingCount(expiredTasks.length);
       });
 
       if (unsubscribe) setTimeout(() => unsubscribe(), 1000);
@@ -184,12 +198,10 @@ export default function ProfileScreen() {
     router.replace("/");
   };
 
-  // --- RENDERIZADORES DE TAREFA PENDENTE ---
   const renderPendingTask = ({ item }: { item: Task }) => (
     <View
       style={[
         styles.historyItem,
-        // Borda vermelha para indicar que estourou o prazo
         {
           borderLeftColor: "#D32F2F",
           backgroundColor: "rgba(211, 47, 47, 0.05)",
@@ -336,7 +348,6 @@ export default function ProfileScreen() {
             <Text style={styles.statLabel}>Concluídas</Text>
           </View>
 
-          {/* CARD CLICÁVEL "EM ABERTO" (Agora mostra só as Expiradas) */}
           <TouchableOpacity
             style={[styles.statCard, { backgroundColor: colors.card }]}
             onPress={() => setShowHistory(true)}
@@ -359,8 +370,76 @@ export default function ProfileScreen() {
           CONFIGURAÇÕES
         </Text>
 
+        {/* --- BOTÃO: VINCULAR CASAL --- */}
         <TouchableOpacity
           style={[styles.optionButton, { backgroundColor: colors.card }]}
+          onPress={() => router.push("/vincular")}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 15 }}>
+            <View
+              style={[
+                styles.iconBox,
+                { backgroundColor: isFemale ? "#FCE4EC" : "#37474F" },
+              ]}
+            >
+              <MaterialCommunityIcons
+                name="heart-plus"
+                size={20}
+                color={isFemale ? "#E91E63" : "#FF80AB"}
+              />
+            </View>
+            <Text style={[styles.optionText, { color: colors.text }]}>
+              Vincular Casal
+            </Text>
+          </View>
+          <MaterialIcons name="chevron-right" size={24} color={colors.sub} />
+        </TouchableOpacity>
+
+        {/* --- BOTÃO: FINANCEIRO (CORRIGIDO) --- */}
+        <TouchableOpacity
+          style={[
+            styles.optionButton,
+            { backgroundColor: colors.card, marginTop: 10 },
+          ]}
+          onPress={handleOpenFinanceSettings}
+          disabled={loadingSettings}
+        >
+          {/* GRUPO ESQUERDA */}
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 15,
+              flex: 1,
+            }}
+          >
+            <View style={[styles.iconBox, { backgroundColor: "#E8F5E9" }]}>
+              {loadingSettings ? (
+                <ActivityIndicator size="small" color="#4CAF50" />
+              ) : (
+                <FontAwesome5 name="wallet" size={20} color="#4CAF50" />
+              )}
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.optionText, { color: colors.text }]}>
+                Configuração Financeira
+              </Text>
+              <Text style={{ fontSize: 10, color: colors.sub }}>
+                Renda e modo de divisão
+              </Text>
+            </View>
+          </View>
+
+          {/* GRUPO DIREITA */}
+          <MaterialIcons name="chevron-right" size={24} color={colors.sub} />
+        </TouchableOpacity>
+
+        {/* --- BOTÃO: TEMA --- */}
+        <TouchableOpacity
+          style={[
+            styles.optionButton,
+            { backgroundColor: colors.card, marginTop: 10 },
+          ]}
           onPress={handleSwitchTheme}
         >
           <View style={{ flexDirection: "row", alignItems: "center", gap: 15 }}>
@@ -383,6 +462,7 @@ export default function ProfileScreen() {
           <MaterialIcons name="chevron-right" size={24} color={colors.sub} />
         </TouchableOpacity>
 
+        {/* --- BOTÃO: TUTORIAL --- */}
         <TouchableOpacity
           style={[
             styles.optionButton,
@@ -414,7 +494,6 @@ export default function ProfileScreen() {
           <Text style={styles.logoutText}>Sair do App</Text>
         </TouchableOpacity>
 
-        {/* --- COPYRIGHT FOOTER --- */}
         <View style={styles.footerContainer}>
           <Text style={styles.copyrightText}>
             Desenvolvido com ❤️ por Marcos & Mel
@@ -423,11 +502,10 @@ export default function ProfileScreen() {
             © 2026 A Colher. Todos os direitos reservados.
           </Text>
         </View>
-
         <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* --- MODAL DE HISTÓRICO DE PENALIDADES --- */}
+      {/* --- MODAL DE HISTÓRICO --- */}
       <Modal visible={showHistory} animationType="slide" transparent={true}>
         <View style={styles.modalOverlay}>
           <View
@@ -447,11 +525,9 @@ export default function ProfileScreen() {
                 <AntDesign name="close" size={24} color={colors.sub} />
               </TouchableOpacity>
             </View>
-
             <Text style={{ color: colors.sub, marginBottom: 15 }}>
               Estas tarefas contaram pontos negativos na gamificação:
             </Text>
-
             <FlatList
               data={pendingList}
               keyExtractor={(item) => item.id}
@@ -467,6 +543,15 @@ export default function ProfileScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* --- MODAL FINANCEIRO (AGORA FORA DO BOTÃO) --- */}
+      <FinanceConfigModal
+        visible={showFinanceModal}
+        onClose={() => setShowFinanceModal(false)}
+        onSave={() => console.log("Configurações atualizadas!")}
+        initialIncome={currentSettings?.monthlyIncome || 0}
+        initialMode={currentSettings?.mode || "unified"}
+      />
     </View>
   );
 }
@@ -498,10 +583,7 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     overflow: "hidden",
   },
-  avatarImage: {
-    width: "100%",
-    height: "100%",
-  },
+  avatarImage: { width: "100%", height: "100%" },
   editIconBadge: {
     position: "absolute",
     bottom: 15,
@@ -566,24 +648,9 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255, 82, 82, 0.05)",
   },
   logoutText: { color: "#FF5252", fontWeight: "bold", fontSize: 16 },
-
-  footerContainer: {
-    marginTop: 40,
-    alignItems: "center",
-    opacity: 0.6,
-  },
-  copyrightText: {
-    fontSize: 12,
-    color: "#888",
-    fontWeight: "bold",
-  },
-  copyrightSub: {
-    fontSize: 10,
-    color: "#999",
-    marginTop: 2,
-  },
-
-  // Modal History Styles
+  footerContainer: { marginTop: 40, alignItems: "center", opacity: 0.6 },
+  copyrightText: { fontSize: 12, color: "#888", fontWeight: "bold" },
+  copyrightSub: { fontSize: 10, color: "#999", marginTop: 2 },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
@@ -601,10 +668,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 20,
   },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
-  },
+  modalTitle: { fontSize: 20, fontWeight: "bold" },
   historyItem: {
     flexDirection: "row",
     alignItems: "center",
@@ -614,13 +678,6 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     borderLeftWidth: 4,
   },
-  historyTitle: {
-    fontSize: 16,
-    fontWeight: "bold",
-  },
-  historyDate: {
-    fontSize: 12,
-    color: "#888",
-    marginTop: 4,
-  },
+  historyTitle: { fontSize: 16, fontWeight: "bold" },
+  historyDate: { fontSize: 12, color: "#888", marginTop: 4 },
 });

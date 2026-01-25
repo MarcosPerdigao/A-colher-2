@@ -76,7 +76,7 @@ export default function OnboardingScreen() {
     if (router.canGoBack()) {
       router.back();
     } else {
-      router.replace("/login");
+      router.replace("/");
     }
   };
 

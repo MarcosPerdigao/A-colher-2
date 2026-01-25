@@ -104,12 +104,16 @@ export default function LoginScreen() {
           if (user) {
             const userData = await AuthService.syncUserData(user.uid);
 
-            if (userData && userData.coupleCode) {
+            // --- AQUI ESTÁ A CORREÇÃO MÁGICA ---
+            // Verificamos se existe o pedido de "Forçar Setup"
+            const forceSetup = await AsyncStorage.getItem("@force_setup");
+
+            // Só redireciona para o mural se TIVER código E NÃO TIVER pedido de força
+            if (userData && userData.coupleCode && !forceSetup) {
               const savedTheme = await AsyncStorage.getItem("@app_theme");
               const themeToUse = savedTheme || userData.sexo || "masculino";
               await setTheme(themeToUse as any);
 
-              // Tenta registrar notificação silenciosamente ao entrar
               registerForPushNotificationsAsync().then((token) => {
                 if (token && user.uid) {
                   AuthService.updatePushToken(user.uid, token);
@@ -118,6 +122,9 @@ export default function LoginScreen() {
 
               router.replace("/mural");
             } else {
+              // Se tiver a flag @force_setup, a gente consome ela (apaga) e mostra a tela de setup
+              if (forceSetup) await AsyncStorage.removeItem("@force_setup");
+
               setViewState("setup");
               setLoading(false);
             }
@@ -184,12 +191,40 @@ export default function LoginScreen() {
       if (!user) throw new Error("Usuário não autenticado.");
 
       let finalCode = "";
+
       if (setupMode === "create") {
+        // Gera um código aleatório de 6 dígitos
         finalCode = Math.floor(100000 + Math.random() * 900000).toString();
       } else {
+        // MODO JOIN: Vamos verificar se o código é válido E SE NÃO É O SEU PRÓPRIO
         const db = getFirestore();
         const coupleRef = await getDoc(doc(db, "couples", partnerCode));
+
         if (!coupleRef.exists()) throw new Error("Código não encontrado!");
+
+        const coupleData = coupleRef.data();
+
+        // --- 🛡️ O IF QUE SALVA O DIA 🛡️ ---
+        // Se a lista de parceiros já tem o seu ID, você está tentando entrar no seu próprio código.
+        if (coupleData?.partners && coupleData.partners.includes(user.uid)) {
+          setLoading(false);
+          return showAlert(
+            "Eita!",
+            "Você não pode entrar com seu próprio código. Peça o código do seu amor!",
+            "error",
+          );
+        }
+
+        // Verifica se o casal já está cheio (opcional, mas bom ter)
+        if (coupleData?.partners && coupleData.partners.length >= 2) {
+          setLoading(false);
+          return showAlert(
+            "Lotado",
+            "Este código já tem um casal formado.",
+            "error",
+          );
+        }
+
         finalCode = partnerCode;
       }
 
@@ -202,6 +237,7 @@ export default function LoginScreen() {
         birthDate,
         anniversaryDate,
       );
+
       await setTheme(sexo);
 
       if (setupMode === "create") {
@@ -213,7 +249,8 @@ export default function LoginScreen() {
         router.replace("/mural");
       }
     } catch (error: any) {
-      showAlert("Erro", error.message, "error");
+      console.log(error);
+      showAlert("Erro", error.message || "Erro ao configurar perfil.", "error");
       setLoading(false);
     }
   };

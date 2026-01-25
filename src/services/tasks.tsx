@@ -10,6 +10,7 @@ import {
   deleteDoc,
   updateDoc,
   getDocs,
+  getDoc,
 } from "firebase/firestore";
 import { getApp } from "firebase/app";
 import { ref, uploadBytes, getDownloadURL, getStorage } from "firebase/storage";
@@ -84,6 +85,31 @@ export const TaskService = {
       return unsubscribe;
     } catch (error) {
       console.error("Erro ao iniciar listener:", error);
+      return null;
+    }
+  },
+
+  getToken: async (nickname: string) => {
+    try {
+      const coupleCode = await getCoupleCode();
+      if (!coupleCode) return null;
+      const db = getDb();
+      // O ID do documento na coleção 'tokens' é o nickname do usuário
+      const tokenRef = doc(
+        db,
+        COUPLES_COLLECTION,
+        coupleCode,
+        "tokens",
+        nickname,
+      );
+      const docSnap = await getDoc(tokenRef);
+
+      if (docSnap.exists()) {
+        return docSnap.data().token;
+      }
+      return null;
+    } catch (error) {
+      console.error("Erro ao pegar token específico:", error);
       return null;
     }
   },

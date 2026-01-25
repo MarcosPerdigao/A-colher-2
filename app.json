@@ -2,7 +2,7 @@
   "expo": {
     "name": "A Colher",
     "slug": "a-colher",
-    "version": "1.0.0",
+    "version": "1.0.2",
     "scheme": "acolher",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -21,7 +21,13 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.marcos.acolher",
-      "googleServicesFile": "./google-services.json"
+      "googleServicesFile": "./google-services.json",
+      "versionCode": 3,
+      "navigationBar": {
+        "backgroundColor": "#121212",
+        "barStyle": "light-content",
+        "visible": "sticky-immersive"
+      }
     },
     "web": {
       "favicon": "./assets/images/favicon.png"
@@ -42,6 +48,15 @@
       "eas": {
         "projectId": "3f7b673b-2dbf-4666-811d-1ad779fcb11d"
       }
+    },
+    "updates": {
+      "url": "https://u.expo.dev/3f7b673b-2dbf-4666-811d-1ad779fcb11d",
+      "enabled": true,
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
     }
   }
 }

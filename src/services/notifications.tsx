@@ -2,6 +2,8 @@ import { Platform } from "react-native";
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
 import Constants from "expo-constants";
+import { getFirestore, doc, getDoc, updateDoc } from "firebase/firestore";
+import { getAuth } from "firebase/auth";
 
 // CONFIGURAÇÃO DO HANDLER
 Notifications.setNotificationHandler({
@@ -48,22 +50,29 @@ export async function registerForPushNotificationsAsync(): Promise<
       const projectId =
         Constants?.expoConfig?.extra?.eas?.projectId ??
         Constants?.easConfig?.projectId;
-
       const response = await Notifications.getExpoPushTokenAsync({ projectId });
       token = response.data;
-
-      console.log("🔔 Token gerado:", token);
     } catch (error) {
       console.log("Erro ao pegar token:", error);
     }
-  } else {
-    console.log("Use dispositivo físico para Push");
+  }
+
+  // Salva o token no perfil do usuário no Firebase
+  if (token) {
+    const auth = getAuth();
+    const user = auth.currentUser;
+    if (user) {
+      const db = getFirestore();
+      await updateDoc(doc(db, "users", user.uid), {
+        pushToken: token,
+      });
+    }
   }
 
   return token;
 }
 
-// 2. ENVIAR PUSH (Função Solta)
+// 2. ENVIAR PUSH GENÉRICO
 export async function sendPushNotification(
   expoPushToken: string,
   title: string,
@@ -88,13 +97,56 @@ export async function sendPushNotification(
       },
       body: JSON.stringify(message),
     });
-    console.log("🚀 Notificação enviada para:", expoPushToken);
   } catch (error) {
     console.error("Erro ao enviar push:", error);
   }
 }
 
-// 3. AGENDAR LOCALMENTE (Função Solta)
+// 3. NOTIFICAR O PARCEIRO (INTELIGENTE)
+export async function notifyPartner(title: string, body: string) {
+  try {
+    const auth = getAuth();
+    const user = auth.currentUser;
+    if (!user) return;
+
+    const db = getFirestore();
+
+    // A. Pega dados do usuário logado para ver o código do casal
+    const userSnap = await getDoc(doc(db, "users", user.uid));
+    if (!userSnap.exists()) return;
+    const userData = userSnap.data();
+    const coupleCode = userData.coupleCode;
+
+    if (!coupleCode) return;
+
+    // B. Pega dados do casal
+    const coupleSnap = await getDoc(doc(db, "couples", coupleCode));
+    if (!coupleSnap.exists()) return;
+
+    const coupleData = coupleSnap.data();
+    const members = coupleData.members || [];
+
+    // C. Acha o ID do parceiro (quem NÃO é o usuário atual)
+    const partnerId = members.find((id: string) => id !== user.uid);
+
+    if (partnerId) {
+      // D. Busca o token do parceiro
+      const partnerSnap = await getDoc(doc(db, "users", partnerId));
+      if (partnerSnap.exists()) {
+        const partnerData = partnerSnap.data();
+        const partnerToken = partnerData.pushToken;
+
+        if (partnerToken) {
+          await sendPushNotification(partnerToken, title, body);
+        }
+      }
+    }
+  } catch (error) {
+    console.log("Erro ao tentar notificar parceiro:", error);
+  }
+}
+
+// 4. AGENDAR LOCALMENTE
 export async function scheduleLocalNotification(
   title: string,
   body: string,
@@ -114,16 +166,16 @@ export async function scheduleLocalNotification(
   });
 }
 
-// 4. CANCELAR TODAS (Função Solta)
+// 5. CANCELAR TODAS
 export async function cancelAllNotifications() {
   await Notifications.cancelAllScheduledNotificationsAsync();
 }
 
-// --- A CORREÇÃO MÁGICA ---
-// Exportamos também um Objeto agrupando tudo, para satisfazer o useMural.ts
+// Exportação unificada para facilitar
 export const NotificationService = {
   registerForPushNotificationsAsync,
   sendPushNotification,
+  notifyPartner, // <--- A estrela do show
   scheduleLocalNotification,
   cancelAllNotifications,
 };

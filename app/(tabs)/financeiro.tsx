@@ -9,14 +9,13 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Dimensions,
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import {
   FontAwesome5,
   MaterialIcons,
   AntDesign,
-  MaterialCommunityIcons,
+  MaterialCommunityIcons, // <--- Faltou esse carinha aqui
 } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -30,7 +29,8 @@ import {
 } from "../../src/services/finance";
 import { AuthService } from "../../src/services/auth";
 import { CustomAlert } from "../../src/components/CustomAlert";
-import { FinanceConfigModal } from "../../src/components/FinanceConfigModal"; // Import do Modal
+import { FinanceConfigModal } from "../../src/components/FinanceConfigModal";
+import { NotificationService } from "../../src/services/notifications"; // Importe Novo
 
 export default function FinanceScreen() {
   const { colors: theme, isFemale } = useTheme();
@@ -64,13 +64,13 @@ export default function FinanceScreen() {
     string | null
   >(null);
 
-  // CONTROLE DE EDIÇÃO E OPÇÕES
+  // CONTROLES
   const [showOptions, setShowOptions] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [selectedItem, setSelectedItem] = useState<Transaction | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  // MODAL FORMULÁRIO (NOVA DESPESA)
+  // FORMULÁRIO
   const [modalVisible, setModalVisible] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newValue, setNewValue] = useState("");
@@ -108,17 +108,14 @@ export default function FinanceScreen() {
     const name = await AsyncStorage.getItem("@user_nickname");
     if (name) setMyNickname(name);
 
-    // Carrega Settings
     const settings = await FinanceService.getSettings();
     if (settings) {
       setFinanceMode(settings.mode);
       setMonthlyIncome(settings.monthlyIncome);
     } else {
-      // Se não tiver configuração nenhuma, abre o setup (Primeiro Acesso)
       setShowSetupModal(true);
     }
 
-    // Carrega Nome do Parceiro
     try {
       const user = AuthService.getCurrentUser();
       if (user) {
@@ -167,14 +164,29 @@ export default function FinanceScreen() {
       paidBy: myNickname,
     };
 
-    if (editingId) {
-      await FinanceService.update(editingId, transactionData);
-    } else {
-      await FinanceService.add(transactionData);
-    }
+    try {
+      if (editingId) {
+        await FinanceService.update(editingId, transactionData);
+      } else {
+        await FinanceService.add(transactionData);
 
-    setModalVisible(false);
-    resetForm();
+        // --- NOTIFICAR O PARCEIRO ---
+        const catLabel = getCategoryDetails(newCategory).label;
+        await NotificationService.notifyPartner(
+          "Nova Despesa 💸",
+          `${myNickname} lançou R$ ${newValue} em ${catLabel}`,
+        );
+      }
+      setModalVisible(false);
+      resetForm();
+    } catch (e) {
+      setAlertConfig({
+        visible: true,
+        title: "Erro",
+        message: "Não foi possível salvar",
+        type: "error",
+      });
+    }
   };
 
   const resetForm = () => {
@@ -281,7 +293,6 @@ export default function FinanceScreen() {
     return true;
   });
 
-  // --- CABEÇALHO UNIFICADO ---
   const renderUnifiedHeader = () => {
     const isPositive = unifiedStats.remaining >= 0;
     const isOverBudget = unifiedStats.totalSpent > monthlyIncome;
@@ -754,7 +765,6 @@ export default function FinanceScreen() {
         />
       </TouchableOpacity>
 
-      {/* MODAL OPÇÕES */}
       <GenericModal
         visible={showOptions}
         onClose={() => setShowOptions(false)}
@@ -794,7 +804,6 @@ export default function FinanceScreen() {
         </TouchableOpacity>
       </GenericModal>
 
-      {/* MODAL DELETE */}
       <GenericModal
         visible={showDeleteConfirm}
         onClose={() => setShowDeleteConfirm(false)}
@@ -833,7 +842,6 @@ export default function FinanceScreen() {
         </TouchableOpacity>
       </GenericModal>
 
-      {/* MODAL ADD/EDIT */}
       <Modal visible={modalVisible} animationType="slide" transparent>
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -890,7 +898,6 @@ export default function FinanceScreen() {
                   value={newValue}
                   onChangeText={(t) => setNewValue(t.replace(/[^0-9.,]/g, ""))}
                 />
-
                 <Text
                   style={[
                     styles.inputLabel,
@@ -927,7 +934,6 @@ export default function FinanceScreen() {
                     isFemale={isFemale}
                   />
                 </View>
-
                 <Text
                   style={[
                     styles.inputLabel,
@@ -958,7 +964,6 @@ export default function FinanceScreen() {
                     icon="calendar-check"
                   />
                 </View>
-
                 <Text style={[styles.inputLabel, { color: theme.sub }]}>
                   Categoria
                 </Text>
@@ -1040,7 +1045,6 @@ export default function FinanceScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* COMPONENTE DE CONFIGURAÇÃO (SETUP INICIAL) */}
       <FinanceConfigModal
         visible={showSetupModal}
         onClose={() => setShowSetupModal(false)}
@@ -1051,8 +1055,6 @@ export default function FinanceScreen() {
     </View>
   );
 }
-
-// --- HELPERS E ESTILOS ---
 
 const GenericModal = ({ visible, onClose, bg, children }: any) => (
   <Modal
@@ -1159,7 +1161,6 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     marginTop: 10,
   },
-
   unifiedCard: {
     marginHorizontal: 20,
     padding: 25,
@@ -1179,7 +1180,6 @@ const styles = StyleSheet.create({
   progressBarFill: { height: "100%", borderRadius: 8 },
   statCol: { alignItems: "center", flex: 1 },
   statDivider: { width: 1, height: "80%", backgroundColor: "rgba(0,0,0,0.1)" },
-
   chartBar: {
     width: 140,
     padding: 15,
@@ -1194,7 +1194,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-
   cardItem: {
     flexDirection: "row",
     padding: 15,
@@ -1212,7 +1211,6 @@ const styles = StyleSheet.create({
   },
   itemTitle: { fontSize: 16, fontWeight: "bold" },
   itemValue: { fontSize: 16, fontWeight: "bold" },
-
   miniTag: {
     paddingHorizontal: 6,
     paddingVertical: 2,
@@ -1220,7 +1218,6 @@ const styles = StyleSheet.create({
     marginLeft: 5,
   },
   miniTagText: { fontSize: 8, color: "#FFF", fontWeight: "bold" },
-
   fab: {
     position: "absolute",
     right: 20,
@@ -1231,7 +1228,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     elevation: 8,
   },
-
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
@@ -1263,7 +1259,6 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   modalTitle: { fontSize: 22, fontWeight: "bold" },
-
   optionMenuBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -1273,7 +1268,6 @@ const styles = StyleSheet.create({
     gap: 15,
   },
   optionMenuText: { fontSize: 16, fontWeight: "bold" },
-
   inputLabel: {
     fontSize: 12,
     fontWeight: "bold",
@@ -1294,7 +1288,6 @@ const styles = StyleSheet.create({
     marginTop: 20,
     elevation: 2,
   },
-
   catBadge: {
     flexDirection: "row",
     paddingVertical: 12,

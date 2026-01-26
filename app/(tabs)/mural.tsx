@@ -29,7 +29,7 @@ import ConfettiCannon from "react-native-confetti-cannon";
 import { useMural } from "../../src/hooks/useMural";
 import TaskCard from "../../src/components/TaskCard";
 import { TaskService, Task } from "../../src/services/tasks";
-import { sendPushNotification } from "../../src/services/notifications";
+import { NotificationService } from "../../src/services/notifications"; // Importe atualizado
 import { HistoryService } from "../../src/services/history";
 import { useTheme } from "../../src/context/ThemeContext";
 
@@ -74,37 +74,6 @@ export default function MuralScreen() {
 
   const [myPhoto, setMyPhoto] = useState<string | null>(null);
   const [partnerPhoto, setPartnerPhoto] = useState<string | null>(null);
-
-  // --- AQUI ESTÁ A LÓGICA DE TESTE (LOOPBACK) ---
-  const notifyPartner = async (
-    title: string,
-    body: string,
-    targetRole: "partner" | "judge" | "me",
-  ) => {
-    try {
-      // 1. DESATIVAR O BLOQUEIO DE AUTO-NOTIFICAÇÃO (COMENTADO PARA TESTE)
-      // if (targetRole === "me") return;
-
-      console.log("🔔 MODO TESTE: Enviando notificação para mim mesmo...");
-
-      // 2. EM VEZ DE PEGAR O DO PARCEIRO, PEGA O SEU (COMENTADO ORIGINAL)
-      // const partnerToken = await TaskService.getPartnerToken(mural.myNickname);
-
-      // 3. USE A NOVA FUNÇÃO QUE CRIAMOS PARA PEGAR SEU PRÓPRIO TOKEN
-      const myToken = await TaskService.getToken(mural.myNickname);
-
-      if (myToken) {
-        await sendPushNotification(myToken, title, body, {
-          screen: "mural",
-        });
-        console.log("✅ Notificação enviada para o meu token!");
-      } else {
-        console.log("❌ Token não encontrado.");
-      }
-    } catch (e) {
-      console.log("Erro ao notificar:", e);
-    }
-  };
 
   const loadUserDataAndDates = async () => {
     try {
@@ -242,10 +211,10 @@ export default function MuralScreen() {
       await TaskService.delete(taskId);
       await HistoryService.logAction(mural.myNickname, "excluiu", taskTitle);
 
-      await notifyPartner(
+      // NOTIFICA O PARCEIRO DA EXCLUSÃO
+      await NotificationService.notifyPartner(
         "Tarefa Removida 🗑️",
         `${mural.myNickname} excluiu: ${taskTitle}`,
-        "partner",
       );
     } catch (error) {
       console.log("Erro ao excluir:", error);
@@ -290,7 +259,11 @@ export default function MuralScreen() {
         assignedTo === "judge"
           ? "👩‍⚖️ O Juiz foi acionado!"
           : "Tarefa Atualizada ✏️";
-      await notifyPartner(title, `Tarefa alterada: ${newTask}`, assignedTo);
+      // NOTIFICAÇÃO REAL
+      await NotificationService.notifyPartner(
+        title,
+        `Tarefa alterada: ${newTask}`,
+      );
     } else {
       await mural.handleAddTask(
         {
@@ -305,7 +278,8 @@ export default function MuralScreen() {
 
       const title =
         assignedTo === "judge" ? "👩‍⚖️ O Juiz foi acionado!" : "Nova Missão! 🥄";
-      await notifyPartner(title, `Nova tarefa: ${newTask}`, assignedTo);
+      // NOTIFICAÇÃO REAL
+      await NotificationService.notifyPartner(title, `Nova tarefa: ${newTask}`);
     }
   };
 
@@ -424,9 +398,7 @@ export default function MuralScreen() {
                   formatDate={formatCompletedAt}
                   onPress={() => mural.handleTaskPress(task)}
                   onLongPress={() => {
-                    if (!task.completed) {
-                      handleLongPress(task);
-                    }
+                    if (!task.completed) handleLongPress(task);
                   }}
                   myPhoto={myPhoto}
                   partnerPhoto={partnerPhoto}
@@ -462,6 +434,7 @@ export default function MuralScreen() {
         </TouchableOpacity>
       )}
 
+      {/* MODAIS (Opções, Excluir, Novo, Feedback, etc) MANTIDOS IGUAIS, APENAS CÓDIGO DA LÓGICA ALTERADO */}
       <GenericModal
         visible={showOptions}
         onClose={() => setShowOptions(false)}
@@ -520,10 +493,8 @@ export default function MuralScreen() {
         <Text
           style={{ color: colors.text, textAlign: "center", marginBottom: 20 }}
         >
-          Tem certeza que deseja apagar "{selectedTask?.title}"? Essa ação não
-          pode ser desfeita.
+          Tem certeza que deseja apagar "{selectedTask?.title}"?
         </Text>
-
         <TouchableOpacity
           style={[
             styles.saveBtn,
@@ -535,7 +506,6 @@ export default function MuralScreen() {
             Sim, Excluir
           </Text>
         </TouchableOpacity>
-
         <TouchableOpacity
           onPress={() => setShowDeleteModal(false)}
           style={{ padding: 10 }}
@@ -624,14 +594,12 @@ export default function MuralScreen() {
                     if (errorTitle) setErrorTitle("");
                   }}
                 />
-
                 <Text
                   style={[styles.label, { color: colors.sub, marginTop: 10 }]}
                 >
                   Quem faz?
                 </Text>
                 <View style={styles.priorityRow}>
-                  {/* AGORA TODOS SÃO IGUAIS */}
                   <OptionBtn
                     selected={assignedTo === "me"}
                     label="Eu"
@@ -654,7 +622,6 @@ export default function MuralScreen() {
                     onPress={() => setAssignedTo("judge")}
                   />
                 </View>
-
                 <Text style={[styles.label, { color: colors.sub }]}>Data</Text>
                 <TextInput
                   style={[
@@ -687,7 +654,6 @@ export default function MuralScreen() {
                   value={newObs}
                   onChangeText={setNewObs}
                 />
-
                 <Text style={[styles.label, { color: colors.sub }]}>
                   Prioridade
                 </Text>
@@ -785,6 +751,7 @@ export default function MuralScreen() {
           </>
         )}
       </GenericModal>
+
       <GenericModal
         visible={mural.modals.congrats}
         onClose={() => mural.toggleModal("congrats", false)}
@@ -848,6 +815,7 @@ export default function MuralScreen() {
           </View>
         )}
       </GenericModal>
+
       <Modal
         animationType="fade"
         transparent={true}
@@ -888,7 +856,6 @@ const OptionBtn = ({ selected, label, color, theme, icon, onPress }: any) => (
       {
         borderColor: color,
         backgroundColor: selected ? color : "transparent",
-        // Flex 1 faz todos os botões ocuparem o mesmo espaço disponível
         flex: 1,
         paddingVertical: 12,
         justifyContent: "center",

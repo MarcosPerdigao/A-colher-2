@@ -3,6 +3,7 @@ import {
   createUserWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
+  sendPasswordResetEmail, // <--- Importação para o Esqueci a Senha
   User,
 } from "firebase/auth";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -50,6 +51,16 @@ export const AuthService = {
     }
   },
 
+  // --- FUNÇÃO NOVA: RECUPERAR SENHA ---
+  resetPassword: async (email: string) => {
+    try {
+      await sendPasswordResetEmail(auth, email);
+      return true;
+    } catch (error: any) {
+      throw new Error(error.code);
+    }
+  },
+
   logout: async () => {
     await AsyncStorage.clear();
     return await signOut(auth);
@@ -81,8 +92,9 @@ export const AuthService = {
     mode: "create" | "join",
     birthDate: string,
     anniversaryDate: string,
+    relationshipStatus: "namorando" | "casados" // <--- 1. O 8º PARÂMETRO ADICIONADO AQUI!
   ) => {
-    // 1. Salva dados do Usuário (Aqui usamos setDoc com merge, então OK)
+    // 1. Salva dados do Usuário
     await setDoc(
       doc(db, "users", uid),
       {
@@ -92,6 +104,7 @@ export const AuthService = {
         coupleCode,
         birthDate,
         anniversaryDate,
+        relationshipStatus, // <--- 2. SALVANDO NO FIREBASE AQUI!
         createdAt: new Date().toISOString(),
       },
       { merge: true },
@@ -123,7 +136,6 @@ export const AuthService = {
 
   updatePushToken: async (uid: string, token: string) => {
     try {
-      // CORREÇÃO AQUI: updateDoc recebe apenas 2 argumentos.
       await updateDoc(doc(db, "users", uid), {
         pushToken: token,
         lastLogin: new Date().toISOString(),
@@ -134,7 +146,6 @@ export const AuthService = {
     }
   },
 
-  // --- FUNÇÃO: DETALHES DO CASAL ---
   getCoupleDetails: async (coupleCode: string) => {
     try {
       const coupleRef = doc(db, "couples", coupleCode);
@@ -144,7 +155,6 @@ export const AuthService = {
         const data = coupleSnap.data();
         const userIds = data.users || [];
 
-        // Busca os nomes dos usuários
         const names = [];
         for (const uid of userIds) {
           const uDoc = await getDoc(doc(db, "users", uid));
@@ -160,7 +170,6 @@ export const AuthService = {
     }
   },
 
-  // --- FUNÇÃO: SAIR DO CASAL ---
   leaveCouple: async (uid: string, coupleCode: string) => {
     const coupleRef = doc(db, "couples", coupleCode);
     await updateDoc(coupleRef, {

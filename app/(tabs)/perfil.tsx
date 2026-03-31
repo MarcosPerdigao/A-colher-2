@@ -9,6 +9,7 @@ import {
   Image,
   Modal,
   FlatList,
+  Switch,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -70,6 +71,9 @@ export default function ProfileScreen() {
   const [currentSettings, setCurrentSettings] = useState<any>(null);
   const [loadingSettings, setLoadingSettings] = useState(false);
 
+  // ESTADO PARA CONTROLAR A PROTEÇÃO DO COFRE
+  const [isFinanceProtected, setIsFinanceProtected] = useState(true);
+
   const handleOpenFinanceSettings = async () => {
     setLoadingSettings(true);
     const settings = await FinanceService.getSettings();
@@ -90,7 +94,22 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     loadProfileData();
+    loadPreferences(); // Carrega a preferência do cofre ao abrir a tela
   }, []);
+
+  // Função que carrega se o cofre está protegido ou não
+  const loadPreferences = async () => {
+    const protectedPref = await AsyncStorage.getItem("@finance_protected");
+    if (protectedPref !== null) {
+      setIsFinanceProtected(protectedPref === "true");
+    }
+  };
+
+  // Função que muda a chave e salva no celular
+  const toggleFinanceProtection = async (value: boolean) => {
+    setIsFinanceProtected(value);
+    await AsyncStorage.setItem("@finance_protected", value ? "true" : "false");
+  };
 
   const loadProfileData = async () => {
     try {
@@ -370,7 +389,7 @@ export default function ProfileScreen() {
           CONFIGURAÇÕES
         </Text>
 
-        {/* --- BOTÃO: VINCULAR CASAL --- */}
+        {/* --- 1. BOTÃO: VINCULAR CASAL --- */}
         <TouchableOpacity
           style={[styles.optionButton, { backgroundColor: colors.card }]}
           onPress={() => router.push("/vincular")}
@@ -395,7 +414,7 @@ export default function ProfileScreen() {
           <MaterialIcons name="chevron-right" size={24} color={colors.sub} />
         </TouchableOpacity>
 
-        {/* --- BOTÃO: FINANCEIRO (CORRIGIDO) --- */}
+        {/* --- 2. BOTÃO: CONFIGURAÇÃO FINANCEIRA --- */}
         <TouchableOpacity
           style={[
             styles.optionButton,
@@ -404,7 +423,6 @@ export default function ProfileScreen() {
           onPress={handleOpenFinanceSettings}
           disabled={loadingSettings}
         >
-          {/* GRUPO ESQUERDA */}
           <View
             style={{
               flexDirection: "row",
@@ -429,12 +447,42 @@ export default function ProfileScreen() {
               </Text>
             </View>
           </View>
-
-          {/* GRUPO DIREITA */}
           <MaterialIcons name="chevron-right" size={24} color={colors.sub} />
         </TouchableOpacity>
 
-        {/* --- BOTÃO: TEMA --- */}
+        {/* --- 3. SWITCH: PROTEGER COFRE --- */}
+        <View
+          style={[
+            styles.optionButton,
+            { backgroundColor: colors.card, marginTop: 10 },
+          ]}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 15 }}>
+            <View
+              style={[
+                styles.iconBox,
+                { backgroundColor: isFemale ? "#FCE4EC" : "#37474F" },
+              ]}
+            >
+              <MaterialCommunityIcons
+                name="shield-lock-outline"
+                size={20}
+                color={isFemale ? "#E91E63" : "#FFF"}
+              />
+            </View>
+            <Text style={[styles.optionText, { color: colors.text }]}>
+              Proteger Cofre
+            </Text>
+          </View>
+          <Switch
+            value={isFinanceProtected}
+            onValueChange={toggleFinanceProtection}
+            trackColor={{ false: "#767577", true: colors.primary }}
+            thumbColor={isFinanceProtected ? "#FFF" : "#f4f3f4"}
+          />
+        </View>
+
+        {/* --- 4. BOTÃO: ALTERAR TEMA --- */}
         <TouchableOpacity
           style={[
             styles.optionButton,
@@ -462,7 +510,7 @@ export default function ProfileScreen() {
           <MaterialIcons name="chevron-right" size={24} color={colors.sub} />
         </TouchableOpacity>
 
-        {/* --- BOTÃO: TUTORIAL --- */}
+        {/* --- 5. BOTÃO: TUTORIAL --- */}
         <TouchableOpacity
           style={[
             styles.optionButton,
@@ -544,7 +592,7 @@ export default function ProfileScreen() {
         </View>
       </Modal>
 
-      {/* --- MODAL FINANCEIRO (AGORA FORA DO BOTÃO) --- */}
+      {/* --- MODAL FINANCEIRO --- */}
       <FinanceConfigModal
         visible={showFinanceModal}
         onClose={() => setShowFinanceModal(false)}

@@ -1,27 +1,19 @@
-import { Platform } from "react-native";
-import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
-import Constants from "expo-constants";
-import { getFirestore, doc, getDoc, updateDoc } from "firebase/firestore";
-import { getAuth } from "firebase/auth";
+import { Platform } from "react-native";
 
-// CONFIGURAÇÃO DO HANDLER
+// Configuração do comportamento das notificações no app
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
     shouldPlaySound: true,
-    shouldSetBadge: false,
-    shouldShowBanner: true,
-    shouldShowList: true,
+    shouldSetBadge: true,
+    shouldShowBanner: true, // <-- Adicionado para o novo padrão do Expo
+    shouldShowList: true,   // <-- Adicionado para o novo padrão do Expo
   }),
 });
 
-// 1. REGISTRO (Função Solta)
-export async function registerForPushNotificationsAsync(): Promise<
-  string | undefined
-> {
-  let token: string | undefined;
-
+export async function registerForPushNotificationsAsync() {
+  let token;
   if (Platform.OS === "android") {
     await Notifications.setNotificationChannelAsync("default", {
       name: "default",
@@ -31,151 +23,120 @@ export async function registerForPushNotificationsAsync(): Promise<
     });
   }
 
-  if (Device.isDevice) {
-    const { status: existingStatus } =
-      await Notifications.getPermissionsAsync();
-    let finalStatus = existingStatus;
-
-    if (existingStatus !== "granted") {
-      const { status } = await Notifications.requestPermissionsAsync();
-      finalStatus = status;
-    }
-
-    if (finalStatus !== "granted") {
-      console.log("Permissão de notificação negada!");
-      return undefined;
-    }
-
-    try {
-      const projectId =
-        Constants?.expoConfig?.extra?.eas?.projectId ??
-        Constants?.easConfig?.projectId;
-      const response = await Notifications.getExpoPushTokenAsync({ projectId });
-      token = response.data;
-    } catch (error) {
-      console.log("Erro ao pegar token:", error);
-    }
+  const { status: existingStatus } = await Notifications.getPermissionsAsync();
+  let finalStatus = existingStatus;
+  if (existingStatus !== "granted") {
+    const { status } = await Notifications.requestPermissionsAsync();
+    finalStatus = status;
+  }
+  if (finalStatus !== "granted") {
+    return undefined;
   }
 
-  // Salva o token no perfil do usuário no Firebase
-  if (token) {
-    const auth = getAuth();
-    const user = auth.currentUser;
-    if (user) {
-      const db = getFirestore();
-      await updateDoc(doc(db, "users", user.uid), {
-        pushToken: token,
-      });
-    }
-  }
-
+  // Pegando o token de push (necessário caso use o EAS Build futuramente)
+  token = (await Notifications.getExpoPushTokenAsync()).data;
   return token;
 }
 
-// 2. ENVIAR PUSH GENÉRICO
-export async function sendPushNotification(
-  expoPushToken: string,
-  title: string,
-  body: string,
-  data: any = {},
-) {
-  const message = {
-    to: expoPushToken,
-    sound: "default",
-    title: title,
-    body: body,
-    data: data,
+// --- O MOTOR DE LEMBRETES DE ANIVERSÁRIO E IDADE ---
+export const agendarLembretesAniversario = async (
+  anniversaryDate: string,
+  birthDate: string,
+  status: "namorando" | "casados",
+) => {
+  // 1. Limpa os agendamentos antigos para não haver spam
+  await Notifications.cancelAllScheduledNotificationsAsync();
+
+  const hoje = new Date();
+
+  // Função auxiliar para agendar notificações (O "as any" resolve o erro do TS)
+  const agendarAlerta = async (
+    dataAlvo: Date,
+    titulo: string,
+    mensagem: string,
+  ) => {
+    if (dataAlvo.getTime() > hoje.getTime()) {
+      await Notifications.scheduleNotificationAsync({
+        content: { title: titulo, body: mensagem, sound: true },
+        trigger: { date: dataAlvo } as any, // 🛡️ AQUI ESTÁ A CORREÇÃO DO ERRO DO TYPE!
+      });
+    }
   };
 
-  try {
-    await fetch("https://exp.host/--/api/v2/push/send", {
-      method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Accept-encoding": "gzip, deflate",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(message),
-    });
-  } catch (error) {
-    console.error("Erro ao enviar push:", error);
-  }
-}
+  // Os intervalos que você pediu
+  const tempos = [
+    { dias: 30, desc: "1 mês" },
+    { dias: 15, desc: "15 dias" },
+    { dias: 7, desc: "1 semana" },
+    { dias: 0, desc: "Hoje" },
+  ];
 
-// 3. NOTIFICAR O PARCEIRO (INTELIGENTE)
-export async function notifyPartner(title: string, body: string) {
-  try {
-    const auth = getAuth();
-    const user = auth.currentUser;
-    if (!user) return;
+  // --- LÓGICA DE ANIVERSÁRIO DE RELACIONAMENTO ---
+  if (anniversaryDate && anniversaryDate.length === 10) {
+    const [diaStr, mesStr, anoStr] = anniversaryDate.split("/");
+    let proximoAniv = new Date(
+      hoje.getFullYear(),
+      parseInt(mesStr, 10) - 1,
+      parseInt(diaStr, 10),
+    );
 
-    const db = getFirestore();
-
-    // A. Pega dados do usuário logado para ver o código do casal
-    const userSnap = await getDoc(doc(db, "users", user.uid));
-    if (!userSnap.exists()) return;
-    const userData = userSnap.data();
-    const coupleCode = userData.coupleCode;
-
-    if (!coupleCode) return;
-
-    // B. Pega dados do casal
-    const coupleSnap = await getDoc(doc(db, "couples", coupleCode));
-    if (!coupleSnap.exists()) return;
-
-    const coupleData = coupleSnap.data();
-    const members = coupleData.members || [];
-
-    // C. Acha o ID do parceiro (quem NÃO é o usuário atual)
-    const partnerId = members.find((id: string) => id !== user.uid);
-
-    if (partnerId) {
-      // D. Busca o token do parceiro
-      const partnerSnap = await getDoc(doc(db, "users", partnerId));
-      if (partnerSnap.exists()) {
-        const partnerData = partnerSnap.data();
-        const partnerToken = partnerData.pushToken;
-
-        if (partnerToken) {
-          await sendPushNotification(partnerToken, title, body);
-        }
-      }
+    if (proximoAniv.getTime() < hoje.getTime()) {
+      proximoAniv.setFullYear(hoje.getFullYear() + 1);
     }
-  } catch (error) {
-    console.log("Erro ao tentar notificar parceiro:", error);
+
+    const anosDeRelacao = proximoAniv.getFullYear() - parseInt(anoStr, 10);
+    const tipoEvento = status === "casados" ? "casamento" : "namoro";
+
+    for (const t of tempos) {
+      const dataAlerta = new Date(proximoAniv);
+      dataAlerta.setDate(dataAlerta.getDate() - t.dias);
+      dataAlerta.setHours(10, 0, 0, 0); // Dispara às 10 da manhã
+
+      let titulo =
+        t.dias === 0
+          ? `🎉 Feliz Aniversário de ${tipoEvento}!`
+          : `⏳ Lembrete: Aniversário de ${tipoEvento}!`;
+      let mensagem =
+        t.dias === 0
+          ? `Hoje vocês celebram ${anosDeRelacao} anos juntos! Já preparou a surpresa? 🎁`
+          : `Falta(m) ${t.desc} para vocês celebrarem ${anosDeRelacao} anos juntos!`;
+
+      await agendarAlerta(dataAlerta, titulo, mensagem);
+    }
   }
-}
 
-// 4. AGENDAR LOCALMENTE
-export async function scheduleLocalNotification(
-  title: string,
-  body: string,
-  seconds: number,
-) {
-  await Notifications.scheduleNotificationAsync({
-    content: {
-      title,
-      body,
-      sound: "default",
-    },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-      seconds: seconds,
-      repeats: false,
-    },
-  });
-}
+  // --- LÓGICA DE ANIVERSÁRIO PESSOAL (IDADE) ---
+  if (birthDate && birthDate.length === 10) {
+    const [diaStr, mesStr, anoStr] = birthDate.split("/");
+    let proximoNiver = new Date(
+      hoje.getFullYear(),
+      parseInt(mesStr, 10) - 1,
+      parseInt(diaStr, 10),
+    );
 
-// 5. CANCELAR TODAS
-export async function cancelAllNotifications() {
-  await Notifications.cancelAllScheduledNotificationsAsync();
-}
+    if (proximoNiver.getTime() < hoje.getTime()) {
+      proximoNiver.setFullYear(hoje.getFullYear() + 1);
+    }
 
-// Exportação unificada para facilitar
-export const NotificationService = {
-  registerForPushNotificationsAsync,
-  sendPushNotification,
-  notifyPartner, // <--- A estrela do show
-  scheduleLocalNotification,
-  cancelAllNotifications,
+    const novaIdade = proximoNiver.getFullYear() - parseInt(anoStr, 10);
+
+    for (const t of tempos) {
+      const dataAlerta = new Date(proximoNiver);
+      dataAlerta.setDate(dataAlerta.getDate() - t.dias);
+      dataAlerta.setHours(10, 0, 0, 0);
+
+      let titulo =
+        t.dias === 0 ? `🎂 Feliz Aniversário!` : `⏳ Lembrete de Aniversário!`;
+      let mensagem =
+        t.dias === 0
+          ? `Hoje você completa ${novaIdade} anos! Que seja um dia incrível! 🎉`
+          : `Falta(m) ${t.desc} para o seu aniversário de ${novaIdade} anos!`;
+
+      await agendarAlerta(dataAlerta, titulo, mensagem);
+    }
+  }
+
+  console.log(
+    "⏳ Lembretes de namoro/casamento e idade agendados com sucesso!",
+  );
 };

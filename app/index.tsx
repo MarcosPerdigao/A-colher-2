@@ -22,6 +22,7 @@ import { AuthService } from "../src/services/auth";
 import { CustomAlert } from "../src/components/CustomAlert";
 import { useTheme } from "../src/context/ThemeContext";
 import { registerForPushNotificationsAsync } from "../src/services/notifications";
+import { agendarLembretesAniversario } from "../src/services/notifications";
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -46,6 +47,10 @@ export default function LoginScreen() {
   const [partnerCode, setPartnerCode] = useState("");
   const [birthDate, setBirthDate] = useState("");
   const [anniversaryDate, setAnniversaryDate] = useState("");
+  // Adiciona este estado
+  const [relationshipStatus, setRelationshipStatus] = useState<
+    "namorando" | "casados"
+  >("namorando");
 
   const showAlert = (
     title: string,
@@ -79,10 +84,17 @@ export default function LoginScreen() {
 
   const handleDateChange = (text: string, setter: (val: string) => void) => {
     let cleaned = text.replace(/[^0-9]/g, "");
-    if (cleaned.length > 4) cleaned = cleaned.substring(0, 4);
-    if (cleaned.length >= 3)
+    if (cleaned.length > 8) cleaned = cleaned.substring(0, 8); // Limita a 8 dígitos (DDMMAAAA)
+
+    if (cleaned.length >= 5) {
+      setter(
+        `${cleaned.substring(0, 2)}/${cleaned.substring(2, 4)}/${cleaned.substring(4)}`,
+      );
+    } else if (cleaned.length >= 3) {
       setter(`${cleaned.substring(0, 2)}/${cleaned.substring(2)}`);
-    else setter(cleaned);
+    } else {
+      setter(cleaned);
+    }
   };
 
   useEffect(() => {
@@ -103,16 +115,24 @@ export default function LoginScreen() {
         unsubscribeAuth = AuthService.onStateChanged(async (user) => {
           if (user) {
             const userData = await AuthService.syncUserData(user.uid);
-
-            // --- AQUI ESTÁ A CORREÇÃO MÁGICA ---
-            // Verificamos se existe o pedido de "Forçar Setup"
             const forceSetup = await AsyncStorage.getItem("@force_setup");
 
-            // Só redireciona para o mural se TIVER código E NÃO TIVER pedido de força
             if (userData && userData.coupleCode && !forceSetup) {
               const savedTheme = await AsyncStorage.getItem("@app_theme");
               const themeToUse = savedTheme || userData.sexo || "masculino";
               await setTheme(themeToUse as any);
+
+              if (
+                userData.anniversaryDate &&
+                userData.birthDate &&
+                userData.relationshipStatus
+              ) {
+                agendarLembretesAniversario(
+                  userData.anniversaryDate,
+                  userData.birthDate,
+                  userData.relationshipStatus,
+                );
+              }
 
               registerForPushNotificationsAsync().then((token) => {
                 if (token && user.uid) {
@@ -166,6 +186,30 @@ export default function LoginScreen() {
     }
   };
 
+  const handleForgotPassword = async () => {
+    if (!email) {
+      return showAlert(
+        "Atenção",
+        "Digite seu e-mail no campo acima para recuperar a senha.",
+        "info",
+      );
+    }
+    setLoading(true);
+    try {
+      await AuthService.resetPassword(email);
+      showAlert(
+        "Sucesso!",
+        "E-mail de recuperação enviado. Verifique sua caixa de entrada (e o spam!).",
+        "success",
+      );
+    } catch (error: any) {
+      const friendlyMsg = getFriendlyErrorMessage(error.code || error.message);
+      showAlert("Erro", friendlyMsg, "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleShareCode = async (code: string) => {
     try {
       await Share.share({
@@ -178,10 +222,18 @@ export default function LoginScreen() {
 
   const handleCoupleSetup = async () => {
     if (!nickname) return showAlert("Ops", "Escolha um apelido!", "error");
-    if (birthDate.length !== 5)
-      return showAlert("Ops", "Preencha nascimento", "error");
-    if (anniversaryDate.length !== 5)
-      return showAlert("Ops", "Preencha namoro", "error");
+    if (birthDate.length !== 10)
+      return showAlert(
+        "Ops",
+        "Preencha o nascimento completo (DD/MM/AAAA)",
+        "error",
+      );
+    if (anniversaryDate.length !== 10)
+      return showAlert(
+        "Ops",
+        "Preencha a data de relacionamento (DD/MM/AAAA)",
+        "error",
+      );
     if (setupMode === "join" && !partnerCode)
       return showAlert("Ops", "Digite o código!", "error");
 
@@ -236,6 +288,7 @@ export default function LoginScreen() {
         setupMode,
         birthDate,
         anniversaryDate,
+        relationshipStatus,
       );
 
       await setTheme(sexo);
@@ -315,6 +368,20 @@ export default function LoginScreen() {
                   {isRegistering ? "Criar Conta" : "Entrar"}
                 </Text>
               </TouchableOpacity>
+
+              {/* --- NOVO BOTÃO DE ESQUECI A SENHA --- */}
+              {!isRegistering && (
+                <TouchableOpacity
+                  onPress={handleForgotPassword}
+                  style={{ marginBottom: 15 }}
+                >
+                  <Text
+                    style={[styles.linkText, { marginBottom: 0, marginTop: 0 }]}
+                  >
+                    Esqueci minha senha
+                  </Text>
+                </TouchableOpacity>
+              )}
               <TouchableOpacity
                 onPress={() => setIsRegistering(!isRegistering)}
               >
@@ -393,6 +460,56 @@ export default function LoginScreen() {
                   </Text>
                 </TouchableOpacity>
               </View>
+              {/* --- NOVO SELETOR DE STATUS --- */}
+              <View
+                style={[
+                  styles.switchContainer,
+                  { width: "100%", marginTop: -5, marginBottom: 15 },
+                ]}
+              >
+                <TouchableOpacity
+                  onPress={() => setRelationshipStatus("namorando")}
+                  style={[
+                    styles.switchButton,
+                    { flex: 1, alignItems: "center" },
+                    relationshipStatus === "namorando" && {
+                      backgroundColor: isFemaleTheme ? "#FFD1DC" : "#37474F",
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.switchText,
+                      relationshipStatus === "namorando"
+                        ? { color: isFemaleTheme ? "#5D4037" : "#fff" }
+                        : { color: "#888" },
+                    ]}
+                  >
+                    Namorando
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setRelationshipStatus("casados")}
+                  style={[
+                    styles.switchButton,
+                    { flex: 1, alignItems: "center" },
+                    relationshipStatus === "casados" && {
+                      backgroundColor: isFemaleTheme ? "#FFD1DC" : "#37474F",
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.switchText,
+                      relationshipStatus === "casados"
+                        ? { color: isFemaleTheme ? "#5D4037" : "#fff" }
+                        : { color: "#888" },
+                    ]}
+                  >
+                    Casados
+                  </Text>
+                </TouchableOpacity>
+              </View>
               <TextInput
                 placeholder="Seu Apelido"
                 placeholderTextColor="#999"
@@ -402,19 +519,19 @@ export default function LoginScreen() {
               />
               <View style={{ flexDirection: "row", gap: 10, width: "100%" }}>
                 <TextInput
-                  placeholder="Nasc. (DD/MM)"
+                  placeholder="Nasc. (DD/MM/AAAA)"
                   placeholderTextColor="#999"
                   keyboardType="numeric"
-                  maxLength={5}
+                  maxLength={10}
                   style={[styles.inputBase, inputStyle, { flex: 1 }]}
                   value={birthDate}
                   onChangeText={(t) => handleDateChange(t, setBirthDate)}
                 />
                 <TextInput
-                  placeholder="Namoro (DD/MM)"
+                  placeholder="Data (DD/MM/AAAA)"
                   placeholderTextColor="#999"
                   keyboardType="numeric"
-                  maxLength={5}
+                  maxLength={10}
                   style={[styles.inputBase, inputStyle, { flex: 1 }]}
                   value={anniversaryDate}
                   onChangeText={(t) => handleDateChange(t, setAnniversaryDate)}

@@ -1,236 +1,287 @@
-import React, { useState, useCallback } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
-  ActivityIndicator,
   ScrollView,
+  StatusBar,
 } from "react-native";
+import { Stack } from "expo-router";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { useFocusEffect } from "expo-router";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../../src/context/ThemeContext";
+
+type FinanceTab = "gastos" | "investimentos";
+
+const gastosMock = [
+  {
+    id: "1",
+    title: "Mercado",
+    subtitle: "Mel • Ontem",
+    amount: "- R$ 340,50",
+    icon: "cart-outline" as const,
+    femaleBg: "#FCE4EC",
+    femaleColor: "#E91E63",
+    maleBg: "#263238",
+    maleColor: "#FFFFFF",
+    action: "Ver",
+  },
+  {
+    id: "2",
+    title: "Internet",
+    subtitle: "Marcos • Hoje",
+    amount: "- R$ 129,90",
+    icon: "wifi" as const,
+    femaleBg: "#E3F2FD",
+    femaleColor: "#1E88E5",
+    maleBg: "#263238",
+    maleColor: "#FFFFFF",
+    action: "Ver",
+  },
+];
+
+const investimentosMock = [
+  {
+    id: "1",
+    title: "Reserva do casal",
+    subtitle: "Aporte • Esta semana",
+    amount: "+ R$ 500,00",
+    icon: "piggy-bank-outline" as const,
+    femaleBg: "#E8F5E9",
+    femaleColor: "#43A047",
+    maleBg: "#263238",
+    maleColor: "#81C784",
+    action: "Detalhes",
+  },
+  {
+    id: "2",
+    title: "MXRF11",
+    subtitle: "Marcos • Hoje",
+    amount: "+ R$ 300,00",
+    icon: "chart-line" as const,
+    femaleBg: "#FFF3E0",
+    femaleColor: "#FB8C00",
+    maleBg: "#263238",
+    maleColor: "#FFB74D",
+    action: "Detalhes",
+  },
+];
 
 export default function FinanceiroScreen() {
   const { colors, isFemale } = useTheme();
+  const insets = useSafeAreaInsets();
+  const [activeTab, setActiveTab] = useState<FinanceTab>("gastos");
 
-  const [isUnlocked, setIsUnlocked] = useState(false);
-  const [isChecking, setIsChecking] = useState(true);
+  const content = activeTab === "gastos" ? gastosMock : investimentosMock;
+  const titleColorOnPrimary = isFemale ? "#5D4037" : "#FFFFFF";
+  const lightSegmentBg = isFemale ? "#FCE4EC" : "#1A1A1A";
 
-  useFocusEffect(
-    useCallback(() => {
-      let isMounted = true;
-
-      const checkProtection = async () => {
-        if (isMounted) setIsChecking(true);
-
-        // Puxa do banco a preferência do Perfil
-        const protectedPref = await AsyncStorage.getItem("@finance_protected");
-
-        if (isMounted) {
-          // Se estiver explicitamente desligado ("false"), o cofre abre direto.
-          // Se estiver "true" ou não existir, ele tranca.
-          if (protectedPref === "false") {
-            setIsUnlocked(true);
-          } else {
-            setIsUnlocked(false);
-          }
-          setIsChecking(false);
-        }
-      };
-
-      checkProtection();
-
-      return () => {
-        isMounted = false;
-      };
-    }, []),
-  );
-
-  // Botão que simula você digitando a senha
-  const handleMockAuthenticate = () => {
-    setIsUnlocked(true);
-  };
-
-  // 1. TELA DE CARREGAMENTO RÁPIDO
-  if (isChecking) {
-    return (
-      <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
-    );
-  }
-
-  // 2. TELA DE BLOQUEIO (COFRE FECHADO)
-  if (!isUnlocked) {
-    return (
-      <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <MaterialCommunityIcons
-          name="shield-lock-outline"
-          size={80}
-          color={colors.primary}
-        />
-        <Text style={[styles.title, { color: colors.text }]}>
-          Cofre Bloqueado
-        </Text>
-        <Text
-          style={[styles.subtitle, { color: isFemale ? "#A1887F" : "#90A4AE" }]}
-        >
-          Área financeira protegida.
-        </Text>
-
-        <TouchableOpacity
-          style={[styles.authButton, { backgroundColor: colors.primary }]}
-          onPress={handleMockAuthenticate}
-        >
-          <MaterialCommunityIcons
-            name="lock-open-variant"
-            size={24}
-            color="#FFF"
-          />
-          <Text style={styles.authButtonText}>Desbloquear Cofre</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
-  // 3. MÓDULO FINANCEIRO ABERTO (DASHBOARD)
   return (
-    <View
-      style={[
-        styles.container,
-        {
-          backgroundColor: colors.background,
-          justifyContent: "flex-start",
-          paddingTop: 60,
-        },
-      ]}
-    >
-      {/* CABEÇALHO */}
-      <View style={styles.header}>
-        <View>
-          <Text style={[styles.title, { color: colors.text, marginTop: 0 }]}>
-            Meu Patrimônio
-          </Text>
-          <Text style={{ color: colors.sub, fontSize: 14 }}>
-            Visão Geral do Casal
-          </Text>
-        </View>
+    <View style={[styles.container, { backgroundColor: colors.bg }]}>
+      <Stack.Screen options={{ headerShown: false }} />
+      <StatusBar barStyle={isFemale ? "dark-content" : "light-content"} />
+
+      <View style={[styles.header, { marginTop: insets.top + 12 }]}>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>Grana</Text>
+      </View>
+
+      <View
+        style={[
+          styles.segmentContainer,
+          { backgroundColor: lightSegmentBg, marginHorizontal: 20 },
+        ]}
+      >
         <TouchableOpacity
-          onPress={() => setIsUnlocked(false)}
-          style={{ padding: 5 }}
+          style={[
+            styles.segmentButton,
+            activeTab === "gastos" && { backgroundColor: colors.primary },
+          ]}
+          onPress={() => setActiveTab("gastos")}
+          activeOpacity={0.85}
         >
-          <MaterialCommunityIcons
-            name="lock-open-outline"
-            size={28}
-            color={colors.primary}
-          />
+          <Text
+            style={[
+              styles.segmentText,
+              {
+                color:
+                  activeTab === "gastos"
+                    ? titleColorOnPrimary
+                    : colors.tabInactive,
+              },
+            ]}
+          >
+            Gastos
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.segmentButton,
+            activeTab === "investimentos" && {
+              backgroundColor: colors.primary,
+            },
+          ]}
+          onPress={() => setActiveTab("investimentos")}
+          activeOpacity={0.85}
+        >
+          <Text
+            style={[
+              styles.segmentText,
+              {
+                color:
+                  activeTab === "investimentos"
+                    ? titleColorOnPrimary
+                    : colors.tabInactive,
+              },
+            ]}
+          >
+            Investimentos
+          </Text>
         </TouchableOpacity>
       </View>
 
-      {/* SALDO TOTAL (FIIs + Renda Fixa) */}
-      <View style={[styles.balanceCard, { backgroundColor: colors.primary }]}>
-        <Text style={styles.balanceLabel}>Patrimônio Total Acumulado</Text>
-        <Text style={styles.balanceValue}>R$ 15.450,00</Text>
-        <View style={styles.balanceRow}>
-          <View style={styles.balancePill}>
-            <MaterialCommunityIcons
-              name="trending-up"
-              size={16}
-              color="#4CAF50"
-            />
-            <Text style={styles.balancePillText}>+ R$ 250,00 este mês</Text>
-          </View>
-        </View>
-      </View>
-
-      {/* CAIXA DE ENTRADA (Lançamentos Pendentes) */}
-      <View style={styles.sectionHeader}>
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>
-          Caixa de Entrada
-        </Text>
-        <View style={[styles.badge, { backgroundColor: colors.accent }]}>
-          <Text style={styles.badgeText}>2</Text>
-        </View>
-      </View>
-
-      {/* LISTA DE LANÇAMENTOS */}
       <ScrollView
-        style={{ width: "100%" }}
         showsVerticalScrollIndicator={false}
+        contentContainerStyle={{
+          paddingHorizontal: 20,
+          paddingTop: 20,
+          paddingBottom: 130,
+        }}
       >
-        {/* Card 1: Gasto da Mel */}
-        <View
-          style={[styles.transactionCard, { backgroundColor: colors.card }]}
-        >
-          <View style={styles.transactionLeft}>
-            <View
-              style={[
-                styles.iconBox,
-                { backgroundColor: isFemale ? "#FCE4EC" : "#37474F" },
-              ]}
-            >
+        <View style={[styles.balanceCard, { backgroundColor: colors.primary }]}>
+          <Text style={[styles.balanceLabel, { color: titleColorOnPrimary }]}>
+            Patrimônio total acumulado
+          </Text>
+
+          <Text style={[styles.balanceValue, { color: titleColorOnPrimary }]}>
+            R$ 15.450,00
+          </Text>
+
+          <View style={styles.balanceFooter}>
+            <View style={styles.balancePill}>
               <MaterialCommunityIcons
-                name="shopping-outline"
-                size={24}
-                color={isFemale ? "#E91E63" : "#FFF"}
+                name="trending-up"
+                size={16}
+                color={isFemale ? "#2E7D32" : "#81C784"}
               />
-            </View>
-            <View>
-              <Text style={[styles.transactionTitle, { color: colors.text }]}>
-                Mercado Extra
-              </Text>
-              <Text style={[styles.transactionSub, { color: colors.sub }]}>
-                Mel • Ontem
+              <Text
+                style={[styles.balancePillText, { color: titleColorOnPrimary }]}
+              >
+                + R$ 250,00 este mês
               </Text>
             </View>
-          </View>
-          <View style={styles.transactionRight}>
-            <Text style={[styles.transactionAmount, { color: "#e74c3c" }]}>
-              - R$ 340,50
-            </Text>
-            <TouchableOpacity style={styles.actionButton}>
-              <Text style={[styles.actionText, { color: colors.primary }]}>
-                Aprovar
-              </Text>
-            </TouchableOpacity>
           </View>
         </View>
 
-        {/* Card 2: Seu Aporte de FII */}
-        <View
-          style={[styles.transactionCard, { backgroundColor: colors.card }]}
-        >
-          <View style={styles.transactionLeft}>
-            <View style={[styles.iconBox, { backgroundColor: "#E8F5E9" }]}>
-              <MaterialCommunityIcons
-                name="chart-line"
-                size={24}
-                color="#4CAF50"
-              />
-            </View>
-            <View>
-              <Text style={[styles.transactionTitle, { color: colors.text }]}>
-                Aporte MXRF11
-              </Text>
-              <Text style={[styles.transactionSub, { color: colors.sub }]}>
-                Marcos • Hoje
-              </Text>
-            </View>
-          </View>
-          <View style={styles.transactionRight}>
-            <Text style={[styles.transactionAmount, { color: "#4CAF50" }]}>
-              + R$ 500,00
+        <View style={styles.statsRow}>
+          <View style={[styles.statCard, { backgroundColor: colors.card }]}>
+            <MaterialCommunityIcons
+              name="clock-outline"
+              size={24}
+              color="#FB8C00"
+            />
+            <Text style={[styles.statNumber, { color: colors.text }]}>2</Text>
+            <Text style={[styles.statLabel, { color: colors.sub }]}>
+              Pendentes
             </Text>
-            <TouchableOpacity style={styles.actionButton}>
-              <Text style={[styles.actionText, { color: colors.primary }]}>
-                Aprovar
-              </Text>
-            </TouchableOpacity>
+          </View>
+
+          <View style={[styles.statCard, { backgroundColor: colors.card }]}>
+            <MaterialCommunityIcons
+              name="check-circle-outline"
+              size={24}
+              color="#43A047"
+            />
+            <Text style={[styles.statNumber, { color: colors.text }]}>8</Text>
+            <Text style={[styles.statLabel, { color: colors.sub }]}>
+              Lançados
+            </Text>
           </View>
         </View>
+
+        <View style={styles.sectionHeader}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>
+            {activeTab === "gastos" ? "Movimentações" : "Carteira"}
+          </Text>
+
+          <View style={[styles.badge, { backgroundColor: colors.accent }]}>
+            <Text style={styles.badgeText}>{content.length}</Text>
+          </View>
+        </View>
+
+        {content.map((item) => (
+          <View
+            key={item.id}
+            style={[styles.itemCard, { backgroundColor: colors.card }]}
+          >
+            <View style={styles.itemLeft}>
+              <View
+                style={[
+                  styles.iconWrap,
+                  {
+                    backgroundColor: isFemale ? item.femaleBg : item.maleBg,
+                  },
+                ]}
+              >
+                <MaterialCommunityIcons
+                  name={item.icon}
+                  size={22}
+                  color={isFemale ? item.femaleColor : item.maleColor}
+                />
+              </View>
+
+              <View style={styles.textWrap}>
+                <Text style={[styles.itemTitle, { color: colors.text }]}>
+                  {item.title}
+                </Text>
+                <Text style={[styles.itemSubtitle, { color: colors.sub }]}>
+                  {item.subtitle}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.itemRight}>
+              <Text style={[styles.itemAmount, { color: colors.text }]}>
+                {item.amount}
+              </Text>
+
+              <TouchableOpacity
+                style={[
+                  styles.smallAction,
+                  {
+                    backgroundColor: isFemale ? "#FFF0F4" : "#263238",
+                  },
+                ]}
+                activeOpacity={0.85}
+              >
+                <Text
+                  style={[styles.smallActionText, { color: colors.primary }]}
+                >
+                  {item.action}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ))}
       </ScrollView>
+
+      <TouchableOpacity
+        style={[
+          styles.fab,
+          {
+            backgroundColor: colors.primary,
+            bottom: insets.bottom + 34,
+          },
+        ]}
+        activeOpacity={0.85}
+      >
+        <MaterialCommunityIcons
+          name={activeTab === "gastos" ? "plus" : "chart-line-variant"}
+          size={28}
+          color={titleColorOnPrimary}
+        />
+      </TouchableOpacity>
     </View>
   );
 }
@@ -238,102 +289,168 @@ export default function FinanceiroScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
   },
   header: {
-    width: "100%",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  title: { fontSize: 28, fontWeight: "bold", marginTop: 20 },
-  subtitle: { fontSize: 16, marginTop: 10, textAlign: "center" },
-  authButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 15,
-    paddingHorizontal: 30,
-    borderRadius: 12,
-    marginTop: 40,
-    gap: 10,
-  },
-  authButtonText: { color: "#FFF", fontSize: 18, fontWeight: "bold" },
-
-  // ESTILOS NOVOS DO DASHBOARD
-  balanceCard: {
-    width: "100%",
-    borderRadius: 20,
-    padding: 25,
-    marginTop: 20,
-    marginBottom: 25,
-    elevation: 5,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 5,
-  },
-  balanceLabel: {
-    color: "rgba(255,255,255,0.8)",
-    fontSize: 14,
-    marginBottom: 5,
-    fontWeight: "600",
-  },
-  balanceValue: {
-    color: "#FFF",
-    fontSize: 32,
-    fontWeight: "bold",
-    marginBottom: 15,
-  },
-  balanceRow: { flexDirection: "row", alignItems: "center" },
-  balancePill: {
-    backgroundColor: "rgba(255,255,255,0.2)",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-  },
-  balancePillText: { color: "#FFF", fontSize: 12, fontWeight: "bold" },
-  sectionHeader: {
-    width: "100%",
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 15,
-    gap: 10,
-  },
-  sectionTitle: { fontSize: 18, fontWeight: "bold" },
-  badge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 },
-  badgeText: { color: "#FFF", fontSize: 12, fontWeight: "bold" },
-  transactionCard: {
-    width: "100%",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: 15,
-    borderRadius: 16,
-    marginBottom: 10,
-    elevation: 2,
-  },
-  transactionLeft: { flexDirection: "row", alignItems: "center", gap: 15 },
-  iconBox: {
-    width: 45,
-    height: 45,
-    borderRadius: 12,
     justifyContent: "center",
     alignItems: "center",
+    paddingTop: 8,
+    paddingBottom: 8,
   },
-  transactionTitle: { fontSize: 16, fontWeight: "bold" },
-  transactionSub: { fontSize: 12, marginTop: 2 },
-  transactionRight: { alignItems: "flex-end", gap: 5 },
-  transactionAmount: { fontSize: 16, fontWeight: "bold" },
-  actionButton: {
-    paddingVertical: 4,
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: "900",
+  },
+  segmentContainer: {
+    flexDirection: "row",
+    borderRadius: 20,
+    padding: 6,
+  },
+  segmentButton: {
+    flex: 1,
+    borderRadius: 16,
+    paddingVertical: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  segmentText: {
+    fontSize: 13,
+    fontWeight: "800",
+    textTransform: "uppercase",
+  },
+  balanceCard: {
+    borderRadius: 24,
+    padding: 24,
+    marginBottom: 18,
+  },
+  balanceLabel: {
+    fontSize: 14,
+    fontWeight: "700",
+    marginBottom: 6,
+    opacity: 0.95,
+  },
+  balanceValue: {
+    fontSize: 30,
+    fontWeight: "900",
+    marginBottom: 14,
+  },
+  balanceFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  balancePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.18)",
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  balancePillText: {
+    fontSize: 12,
+    fontWeight: "700",
+    marginLeft: 6,
+  },
+  statsRow: {
+    flexDirection: "row",
+    marginBottom: 18,
+    gap: 12,
+  },
+  statCard: {
+    flex: 1,
+    borderRadius: 20,
+    paddingVertical: 18,
+    paddingHorizontal: 14,
+    alignItems: "center",
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 14,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+  },
+  badge: {
+    marginLeft: 10,
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  badgeText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  statNumber: {
+    fontSize: 22,
+    fontWeight: "900",
+    marginTop: 8,
+  },
+  statLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    marginTop: 4,
+  },
+  itemCard: {
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  itemLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+    marginRight: 12,
+  },
+  iconWrap: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 14,
+  },
+  textWrap: {
+    flex: 1,
+  },
+  itemTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  itemSubtitle: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  itemRight: {
+    alignItems: "flex-end",
+  },
+  itemAmount: {
+    fontSize: 15,
+    fontWeight: "800",
+    marginBottom: 6,
+  },
+  smallAction: {
+    borderRadius: 10,
     paddingHorizontal: 10,
-    borderRadius: 8,
-    backgroundColor: "rgba(0,0,0,0.05)",
+    paddingVertical: 6,
   },
-  actionText: { fontSize: 12, fontWeight: "bold" },
+  smallActionText: {
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  fab: {
+    position: "absolute",
+    right: 20,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    justifyContent: "center",
+    alignItems: "center",
+    elevation: 6,
+  },
 });

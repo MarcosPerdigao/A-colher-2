@@ -64,7 +64,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="financeiro"
         options={{
-          title: "Grana",
+          title: "Financeiro",
           tabBarIcon: ({ focused }) => (
             <MaterialCommunityIcons
               name={focused ? "piggy-bank" : "piggy-bank-outline"}

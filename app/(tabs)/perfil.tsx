@@ -9,15 +9,12 @@ import {
   Image,
   Modal,
   FlatList,
-  Switch,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   MaterialIcons,
-  FontAwesome5,
-  Ionicons,
   MaterialCommunityIcons,
   AntDesign,
 } from "@expo/vector-icons";
@@ -33,10 +30,6 @@ import { TaskService, Task, checkTaskStatus } from "../../src/services/tasks";
 import { AuthService } from "../../src/services/auth";
 import { CustomAlert } from "../../src/components/CustomAlert";
 import { useTheme } from "../../src/context/ThemeContext";
-
-// IMPORTS DO FINANCEIRO
-import { FinanceConfigModal } from "../../src/components/FinanceConfigModal";
-import { FinanceService } from "../../src/services/finance";
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
@@ -65,21 +58,6 @@ export default function ProfileScreen() {
     message: "",
     type: "info" as any,
   });
-
-  // --- LÓGICA DO FINANCEIRO ---
-  const [showFinanceModal, setShowFinanceModal] = useState(false);
-  const [currentSettings, setCurrentSettings] = useState<any>(null);
-  const [loadingSettings, setLoadingSettings] = useState(false);
-
-  const handleOpenFinanceSettings = async () => {
-    setLoadingSettings(true);
-    const settings = await FinanceService.getSettings();
-    if (settings) {
-      setCurrentSettings(settings);
-    }
-    setLoadingSettings(false);
-    setShowFinanceModal(true);
-  };
 
   const showAlert = (
     title: string,
@@ -396,43 +374,7 @@ export default function ProfileScreen() {
           <MaterialIcons name="chevron-right" size={24} color={colors.sub} />
         </TouchableOpacity>
 
-        {/* --- 2. BOTÃO: CONFIGURAÇÃO FINANCEIRA --- */}
-        <TouchableOpacity
-          style={[
-            styles.optionButton,
-            { backgroundColor: colors.card, marginTop: 10 },
-          ]}
-          onPress={handleOpenFinanceSettings}
-          disabled={loadingSettings}
-        >
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 15,
-              flex: 1,
-            }}
-          >
-            <View style={[styles.iconBox, { backgroundColor: "#E8F5E9" }]}>
-              {loadingSettings ? (
-                <ActivityIndicator size="small" color="#4CAF50" />
-              ) : (
-                <FontAwesome5 name="wallet" size={20} color="#4CAF50" />
-              )}
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.optionText, { color: colors.text }]}>
-                Configuração Financeira
-              </Text>
-              <Text style={{ fontSize: 10, color: colors.sub }}>
-                Renda e modo de divisão
-              </Text>
-            </View>
-          </View>
-          <MaterialIcons name="chevron-right" size={24} color={colors.sub} />
-        </TouchableOpacity>
-        
-        {/* --- 4. BOTÃO: ALTERAR TEMA --- */}
+        {/* --- 2. BOTÃO: ALTERAR TEMA --- */}
         <TouchableOpacity
           style={[
             styles.optionButton,
@@ -447,8 +389,8 @@ export default function ProfileScreen() {
                 { backgroundColor: isFemale ? "#E3F2FD" : "#37474F" },
               ]}
             >
-              <Ionicons
-                name="color-palette-outline"
+              <MaterialCommunityIcons
+                name="palette-outline"
                 size={20}
                 color={isFemale ? "#2196F3" : "#FFF"}
               />
@@ -460,7 +402,7 @@ export default function ProfileScreen() {
           <MaterialIcons name="chevron-right" size={24} color={colors.sub} />
         </TouchableOpacity>
 
-        {/* --- 5. BOTÃO: TUTORIAL --- */}
+        {/* --- 3. BOTÃO: TUTORIAL --- */}
         <TouchableOpacity
           style={[
             styles.optionButton,
@@ -541,15 +483,6 @@ export default function ProfileScreen() {
           </View>
         </View>
       </Modal>
-
-      {/* --- MODAL FINANCEIRO --- */}
-      <FinanceConfigModal
-        visible={showFinanceModal}
-        onClose={() => setShowFinanceModal(false)}
-        onSave={() => console.log("Configurações atualizadas!")}
-        initialIncome={currentSettings?.monthlyIncome || 0}
-        initialMode={currentSettings?.mode || "unified"}
-      />
     </View>
   );
 }

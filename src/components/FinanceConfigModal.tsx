@@ -38,17 +38,39 @@ export function FinanceConfigModal({
   useEffect(() => {
     if (visible) {
       setMode(initialMode || "unified");
-      setIncome(
-        initialIncome > 0 ? initialIncome.toFixed(2).replace(".", ",") : "",
-      );
+      if (initialIncome > 0) {
+        // Formata o número (ex: 15450.50) para a máscara visual (R$ 15.450,50)
+        let formatted = initialIncome
+          .toFixed(2)
+          .replace(".", ",")
+          .replace(/(\d)(?=(\d{3})+(?!\d))/g, "$1.");
+        setIncome("R$ " + formatted);
+      } else {
+        setIncome("");
+      }
     }
   }, [visible, initialIncome, initialMode]);
+
+  // Aplica a máscara de moeda em tempo real
+  const handleCurrencyChange = (value: string) => {
+    let numeric = value.replace(/\D/g, "");
+    if (numeric.length === 0) {
+      setIncome("");
+      return;
+    }
+    let floatVal = (parseInt(numeric) / 100).toFixed(2);
+    let formatted = floatVal
+      .replace(".", ",")
+      .replace(/(\d)(?=(\d{3})+(?!\d))/g, "$1.");
+    setIncome("R$ " + formatted);
+  };
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      const incomeVal = parseFloat(income.replace(/\./g, "").replace(",", "."));
-      const finalIncome = isNaN(incomeVal) ? 0 : incomeVal;
+      // Remove tudo que não é número e converte para decimal matemático real (ex: 15450.50)
+      let numericStr = income.replace(/\D/g, "");
+      let finalIncome = numericStr ? parseInt(numericStr) / 100 : 0;
 
       await FinanceService.saveSettings({
         mode: mode,
@@ -132,34 +154,30 @@ export function FinanceConfigModal({
             </TouchableOpacity>
           </View>
 
-          {mode === "unified" && (
-            <View style={{ width: "100%" }}>
-              <Text
-                style={{
+          <View style={{ width: "100%" }}>
+            <Text
+              style={{ color: theme.text, fontWeight: "bold", marginBottom: 5 }}
+            >
+              {mode === "unified"
+                ? "Renda Total do Casal (Mensal)"
+                : "Sua Renda Mensal"}
+            </Text>
+            <TextInput
+              placeholder="R$ 0,00"
+              placeholderTextColor={theme.sub}
+              value={income}
+              onChangeText={handleCurrencyChange}
+              keyboardType="numeric"
+              style={[
+                styles.input,
+                {
                   color: theme.text,
-                  fontWeight: "bold",
-                  marginBottom: 5,
-                }}
-              >
-                Renda Total do Casal (Mensal)
-              </Text>
-              <TextInput
-                placeholder="0,00"
-                placeholderTextColor={theme.sub}
-                value={income}
-                onChangeText={(t) => setIncome(t.replace(/[^0-9.,]/g, ""))}
-                keyboardType="numeric"
-                style={[
-                  styles.input,
-                  {
-                    color: theme.text,
-                    borderColor: theme.border,
-                    backgroundColor: theme.bg,
-                  },
-                ]}
-              />
-            </View>
-          )}
+                  borderColor: theme.border,
+                  backgroundColor: theme.bg,
+                },
+              ]}
+            />
+          </View>
 
           <TouchableOpacity
             style={[styles.saveBtn, { backgroundColor: theme.primary }]}

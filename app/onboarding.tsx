@@ -11,9 +11,9 @@ import {
 import { useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-// 1. IMPORTAMOS O DETECTOR DE BORDAS
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../src/context/ThemeContext";
+import { Fonts } from "../constants/theme"; // <-- IMPORT DA FONTE
 
 const { width } = Dimensions.get("window");
 
@@ -63,14 +63,12 @@ const SLIDES = [
 export default function OnboardingScreen() {
   const { colors, isFemale } = useTheme();
   const router = useRouter();
-  // 2. ATIVAMOS O DETECTOR
   const insets = useSafeAreaInsets();
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const flatListRef = useRef<FlatList>(null);
 
   const handleFinish = async () => {
-    // Mesma chave do Login (Correção aplicada anteriormente)
     await AsyncStorage.setItem("@app_has_seen_tutorial", "true");
 
     if (router.canGoBack()) {
@@ -145,13 +143,10 @@ export default function OnboardingScreen() {
         ))}
       </View>
 
-      {/* 3. APLICAMOS O PADDING DINÂMICO AQUI */}
       <View
         style={[
           styles.footer,
           {
-            // Se tiver barra de sistema, usa ela + 20px.
-            // Se não tiver (botão físico), usa 30px fixo para ficar bonito.
             paddingBottom: insets.bottom > 0 ? insets.bottom + 20 : 30,
           },
         ]}
@@ -179,7 +174,11 @@ export default function OnboardingScreen() {
         {currentIndex < SLIDES.length - 1 && (
           <TouchableOpacity onPress={handleFinish} style={{ marginTop: 15 }}>
             <Text
-              style={{ color: colors.sub, textDecorationLine: "underline" }}
+              style={{
+                color: colors.sub,
+                textDecorationLine: "underline",
+                fontFamily: Fonts.regular,
+              }}
             >
               Pular
             </Text>
@@ -203,7 +202,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 28,
-    fontWeight: "900",
+    fontFamily: Fonts.black,
     marginBottom: 15,
     textAlign: "center",
   },
@@ -213,6 +212,7 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     paddingHorizontal: 20,
     maxWidth: 320,
+    fontFamily: Fonts.regular,
   },
   pagination: {
     flexDirection: "row",
@@ -221,8 +221,6 @@ const styles = StyleSheet.create({
   },
   dot: { height: 8, borderRadius: 4, marginHorizontal: 4 },
 
-  // Footer agora só cuida do alinhamento horizontal e padding lateral
-  // O paddingBottom é controlado dinamicamente no componente
   footer: {
     paddingHorizontal: 20,
     alignItems: "center",
@@ -242,5 +240,5 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 5,
   },
-  buttonText: { fontSize: 16, fontWeight: "bold", letterSpacing: 1 },
+  buttonText: { fontSize: 16, fontFamily: Fonts.bold, letterSpacing: 1 },
 });

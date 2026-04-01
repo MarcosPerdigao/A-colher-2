@@ -30,6 +30,7 @@ import {
 import { useTheme } from "../src/context/ThemeContext";
 import { AuthService } from "../src/services/auth";
 import { CustomAlert } from "../src/components/CustomAlert";
+import { Fonts } from "../constants/theme"; // <-- IMPORT DA FONTE
 
 export default function VincularScreen() {
   const { colors, isFemale } = useTheme();
@@ -41,7 +42,6 @@ export default function VincularScreen() {
   const [partnerCodeInput, setPartnerCodeInput] = useState("");
   const [isJoining, setIsJoining] = useState(false);
 
-  // Controle de Estado da Tela
   const isFullyConnected = partnersNames.length >= 2;
 
   const [alertConfig, setAlertConfig] = useState({
@@ -72,7 +72,6 @@ export default function VincularScreen() {
         if (userData && userData.coupleCode) {
           setMyCode(userData.coupleCode);
 
-          // Busca quem está nessa casa
           const details = await AuthService.getCoupleDetails(
             userData.coupleCode,
           );
@@ -117,7 +116,7 @@ export default function VincularScreen() {
             try {
               const user = AuthService.getCurrentUser();
               if (user) await AuthService.leaveCouple(user.uid, myCode);
-              router.replace("/"); // Volta pro login/setup
+              router.replace("/");
             } catch (e) {
               showAlert("Erro", "Não foi possível sair.");
             } finally {
@@ -140,7 +139,6 @@ export default function VincularScreen() {
       const user = AuthService.getCurrentUser();
       if (!user) return;
 
-      // 1. Verifica se o código de destino existe
       const partnerCoupleRef = doc(db, "couples", partnerCodeInput);
       const partnerCoupleSnap = await getDoc(partnerCoupleRef);
 
@@ -152,28 +150,24 @@ export default function VincularScreen() {
         );
       }
 
-      // 2. Verifica se a casa de destino está cheia
       const data = partnerCoupleSnap.data();
       if (data.users && data.users.length >= 2) {
         setIsJoining(false);
         return showAlert("Casa Cheia", "Esse código já tem um casal completo.");
       }
 
-      // 3. Atualiza meu usuário
       const userRef = doc(db, "users", user.uid);
       await updateDoc(userRef, {
         coupleCode: partnerCodeInput,
         setupMode: "join",
       });
 
-      // 4. Me adiciona na lista de lá
       await updateDoc(partnerCoupleRef, {
         users: arrayUnion(user.uid),
       });
 
       showAlert("Sucesso!", "Vocês estão conectados! ❤️", "success");
       setTimeout(() => {
-        // Recarrega a tela para atualizar o status
         setPartnerCodeInput("");
         loadCurrentData();
         setIsJoining(false);
@@ -219,7 +213,6 @@ export default function VincularScreen() {
           }
         />
 
-        {/* HEADER */}
         <View style={styles.header}>
           <TouchableOpacity
             onPress={() => router.back()}
@@ -233,7 +226,6 @@ export default function VincularScreen() {
         </View>
 
         <View style={styles.content}>
-          {/* STATUS DA CONEXÃO */}
           <View
             style={[
               styles.statusCard,
@@ -260,7 +252,7 @@ export default function VincularScreen() {
                   style={[styles.partnerBadge, { backgroundColor: colors.bg }]}
                 >
                   <Ionicons name="person" size={14} color={colors.primary} />
-                  <Text style={{ color: colors.text, fontWeight: "bold" }}>
+                  <Text style={{ color: colors.text, fontFamily: Fonts.bold }}>
                     {name}
                   </Text>
                 </View>
@@ -268,7 +260,6 @@ export default function VincularScreen() {
             </View>
           </View>
 
-          {/* BOX DO CÓDIGO (SEMPRE VISÍVEL) */}
           <View style={[styles.card, { backgroundColor: colors.card }]}>
             <Text style={[styles.label, { color: colors.sub }]}>
               CÓDIGO DA CASA
@@ -318,14 +309,19 @@ export default function VincularScreen() {
             </View>
           </View>
 
-          {/* ÁREA DE INPUT - SÓ APARECE SE NÃO ESTIVER CONECTADO */}
           {!isFullyConnected ? (
             <View style={{ width: "100%", marginTop: 20 }}>
               <View style={styles.divider}>
                 <View
                   style={[styles.line, { backgroundColor: colors.border }]}
                 />
-                <Text style={{ color: colors.sub, marginHorizontal: 10 }}>
+                <Text
+                  style={{
+                    color: colors.sub,
+                    marginHorizontal: 10,
+                    fontFamily: Fonts.regular,
+                  }}
+                >
                   OU
                 </Text>
                 <View
@@ -385,7 +381,7 @@ export default function VincularScreen() {
               style={styles.leaveBtn}
               onPress={handleLeaveCouple}
             >
-              <Text style={{ color: "#FF5252", fontWeight: "bold" }}>
+              <Text style={{ color: "#FF5252", fontFamily: Fonts.bold }}>
                 Sair desta Casa / Desvincular
               </Text>
             </TouchableOpacity>
@@ -400,7 +396,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, padding: 20, paddingTop: 50 },
   header: { flexDirection: "row", alignItems: "center", marginBottom: 20 },
   backBtn: { padding: 10, marginRight: 10 },
-  title: { fontSize: 24, fontWeight: "bold" },
+  title: { fontSize: 24, fontFamily: Fonts.black },
   content: { alignItems: "center", flex: 1 },
 
   statusCard: {
@@ -410,7 +406,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 20,
   },
-  statusTitle: { fontSize: 18, fontWeight: "bold", marginVertical: 10 },
+  statusTitle: { fontSize: 18, fontFamily: Fonts.bold, marginVertical: 10 },
   partnersList: {
     flexDirection: "row",
     gap: 10,
@@ -435,11 +431,16 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 12,
-    fontWeight: "bold",
+    fontFamily: Fonts.bold,
     marginBottom: 10,
     letterSpacing: 1,
   },
-  code: { fontSize: 32, fontWeight: "900", letterSpacing: 2, marginBottom: 20 },
+  code: {
+    fontSize: 32,
+    fontFamily: Fonts.black,
+    letterSpacing: 2,
+    marginBottom: 20,
+  },
   rowBtn: { flexDirection: "row", gap: 10, width: "100%" },
   actionBtn: {
     flex: 1,
@@ -450,7 +451,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 8,
   },
-  btnText: { fontWeight: "bold" },
+  btnText: { fontFamily: Fonts.bold },
 
   divider: {
     flexDirection: "row",
@@ -466,6 +467,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     fontSize: 18,
     marginBottom: 15,
+    fontFamily: Fonts.regular,
   },
   joinBtn: {
     width: "100%",
@@ -474,7 +476,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     elevation: 2,
   },
-  joinText: { color: "#FFF", fontWeight: "bold", fontSize: 16 },
+  joinText: { color: "#FFF", fontFamily: Fonts.bold, fontSize: 16 },
 
   leaveBtn: { marginTop: 30, padding: 15 },
 });

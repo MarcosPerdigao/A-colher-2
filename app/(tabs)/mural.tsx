@@ -29,9 +29,10 @@ import ConfettiCannon from "react-native-confetti-cannon";
 import { useMural } from "../../src/hooks/useMural";
 import TaskCard from "../../src/components/TaskCard";
 import { TaskService, Task } from "../../src/services/tasks";
-import { NotificationService } from "../../src/services/notifications"; // Importe atualizado
+import { NotificationService } from "../../src/services/notifications";
 import { HistoryService } from "../../src/services/history";
 import { useTheme } from "../../src/context/ThemeContext";
+import { Fonts } from "../../constants/theme"; // <-- IMPORT DA FONTE
 
 import {
   getFirestore,
@@ -52,7 +53,6 @@ export default function MuralScreen() {
 
   const mural = useMural(isFemale ? "feminino" : "masculino");
 
-  // ESTADOS DO FORMULÁRIO
   const [newTask, setNewTask] = useState("");
   const [newObs, setNewObs] = useState("");
   const [taskDate, setTaskDate] = useState("");
@@ -63,7 +63,6 @@ export default function MuralScreen() {
     "partner",
   );
 
-  // ESTADOS DE CONTROLE
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showOptions, setShowOptions] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
@@ -211,7 +210,6 @@ export default function MuralScreen() {
       await TaskService.delete(taskId);
       await HistoryService.logAction(mural.myNickname, "excluiu", taskTitle);
 
-      // NOTIFICA O PARCEIRO DA EXCLUSÃO
       await NotificationService.notifyPartner(
         "Tarefa Removida 🗑️",
         `${mural.myNickname} excluiu: ${taskTitle}`,
@@ -259,7 +257,6 @@ export default function MuralScreen() {
         assignedTo === "judge"
           ? "👩‍⚖️ O Juiz foi acionado!"
           : "Tarefa Atualizada ✏️";
-      // NOTIFICAÇÃO REAL
       await NotificationService.notifyPartner(
         title,
         `Tarefa alterada: ${newTask}`,
@@ -278,7 +275,6 @@ export default function MuralScreen() {
 
       const title =
         assignedTo === "judge" ? "👩‍⚖️ O Juiz foi acionado!" : "Nova Missão! 🥄";
-      // NOTIFICAÇÃO REAL
       await NotificationService.notifyPartner(title, `Nova tarefa: ${newTask}`);
     }
   };
@@ -406,7 +402,9 @@ export default function MuralScreen() {
               )}
               ListEmptyComponent={
                 <View style={{ marginTop: 50, alignItems: "center" }}>
-                  <Text style={{ color: colors.sub }}>
+                  <Text
+                    style={{ color: colors.sub, fontFamily: Fonts.regular }}
+                  >
                     {item === "pending"
                       ? "Tudo limpo! 🎉"
                       : "Nenhuma tarefa concluída."}
@@ -434,7 +432,6 @@ export default function MuralScreen() {
         </TouchableOpacity>
       )}
 
-      {/* MODAIS (Opções, Excluir, Novo, Feedback, etc) MANTIDOS IGUAIS, APENAS CÓDIGO DA LÓGICA ALTERADO */}
       <GenericModal
         visible={showOptions}
         onClose={() => setShowOptions(false)}
@@ -470,7 +467,9 @@ export default function MuralScreen() {
           onPress={() => setShowOptions(false)}
           style={{ marginTop: 20 }}
         >
-          <Text style={{ color: colors.sub }}>Cancelar</Text>
+          <Text style={{ color: colors.sub, fontFamily: Fonts.regular }}>
+            Cancelar
+          </Text>
         </TouchableOpacity>
       </GenericModal>
 
@@ -491,7 +490,12 @@ export default function MuralScreen() {
           Excluir Tarefa?
         </Text>
         <Text
-          style={{ color: colors.text, textAlign: "center", marginBottom: 20 }}
+          style={{
+            color: colors.text,
+            textAlign: "center",
+            marginBottom: 20,
+            fontFamily: Fonts.regular,
+          }}
         >
           Tem certeza que deseja apagar "{selectedTask?.title}"?
         </Text>
@@ -502,7 +506,7 @@ export default function MuralScreen() {
           ]}
           onPress={confirmDelete}
         >
-          <Text style={{ color: "#FFF", fontWeight: "bold" }}>
+          <Text style={{ color: "#FFF", fontFamily: Fonts.bold }}>
             Sim, Excluir
           </Text>
         </TouchableOpacity>
@@ -510,7 +514,9 @@ export default function MuralScreen() {
           onPress={() => setShowDeleteModal(false)}
           style={{ padding: 10 }}
         >
-          <Text style={{ color: colors.text }}>Cancelar</Text>
+          <Text style={{ color: colors.text, fontFamily: Fonts.regular }}>
+            Cancelar
+          </Text>
         </TouchableOpacity>
       </GenericModal>
 
@@ -531,7 +537,12 @@ export default function MuralScreen() {
           {mural.feedbackData.title}
         </Text>
         <Text
-          style={{ color: colors.text, textAlign: "center", marginBottom: 20 }}
+          style={{
+            color: colors.text,
+            textAlign: "center",
+            marginBottom: 20,
+            fontFamily: Fonts.regular,
+          }}
         >
           {mural.feedbackData.message}
         </Text>
@@ -698,7 +709,7 @@ export default function MuralScreen() {
                   <Text
                     style={{
                       color: isFemale ? colors.text : "#fff",
-                      fontWeight: "bold",
+                      fontFamily: Fonts.bold,
                       fontSize: 16,
                     }}
                   >
@@ -739,6 +750,7 @@ export default function MuralScreen() {
                 color: colors.text,
                 textAlign: "center",
                 marginBottom: 20,
+                fontFamily: Fonts.regular,
               }}
             >
               {mural.judgeResult.message}
@@ -768,7 +780,12 @@ export default function MuralScreen() {
           Mandou Bem!
         </Text>
         <Text
-          style={{ color: colors.text, textAlign: "center", marginBottom: 20 }}
+          style={{
+            color: colors.text,
+            textAlign: "center",
+            marginBottom: 20,
+            fontFamily: Fonts.regular,
+          }}
         >
           Tarefa concluída!
         </Text>
@@ -810,7 +827,9 @@ export default function MuralScreen() {
               onPress={() => mural.toggleModal("finish", false)}
               style={{ marginTop: 15, alignItems: "center" }}
             >
-              <Text style={{ color: colors.sub }}>Cancelar</Text>
+              <Text style={{ color: colors.sub, fontFamily: Fonts.regular }}>
+                Cancelar
+              </Text>
             </TouchableOpacity>
           </View>
         )}
@@ -881,7 +900,7 @@ const OptionBtn = ({ selected, label, color, theme, icon, onPress }: any) => (
             : label === "Juiz"
               ? color
               : theme.sub,
-          fontWeight: "bold",
+          fontFamily: Fonts.bold,
           fontSize: 12,
         }}
       >
@@ -920,7 +939,7 @@ const BtnAction = ({ label, color, txtColor, onPress }: any) => (
     style={[styles.saveBtn, { backgroundColor: color, width: "100%" }]}
     onPress={onPress}
   >
-    <Text style={{ color: txtColor || "#FFF", fontWeight: "bold" }}>
+    <Text style={{ color: txtColor || "#FFF", fontFamily: Fonts.bold }}>
       {label}
     </Text>
   </TouchableOpacity>
@@ -934,7 +953,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     paddingTop: 20,
   },
-  headerTitle: { fontSize: 24, fontWeight: "900" },
+  headerTitle: { fontSize: 24, fontFamily: Fonts.black },
   tabContainer: {
     flexDirection: "row",
     borderRadius: 20,
@@ -948,7 +967,11 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 16,
   },
-  tabText: { fontWeight: "800", fontSize: 13, textTransform: "uppercase" },
+  tabText: {
+    fontFamily: Fonts.black,
+    fontSize: 13,
+    textTransform: "uppercase",
+  },
   fabBase: {
     width: 60,
     height: 60,
@@ -988,10 +1011,10 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: 20,
   },
-  modalTitle: { fontSize: 22, fontWeight: "800" },
+  modalTitle: { fontSize: 22, fontFamily: Fonts.black },
   label: {
     fontSize: 11,
-    fontWeight: "bold",
+    fontFamily: Fonts.bold,
     marginBottom: 8,
     textTransform: "uppercase",
     color: "#888",
@@ -1002,6 +1025,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     fontSize: 16,
     borderWidth: 1,
+    fontFamily: Fonts.regular,
   },
   priorityRow: {
     flexDirection: "row",
@@ -1033,7 +1057,7 @@ const styles = StyleSheet.create({
     width: "100%",
     gap: 15,
   },
-  optionMenuText: { fontSize: 16, fontWeight: "bold" },
+  optionMenuText: { fontSize: 16, fontFamily: Fonts.bold },
   errorBox: {
     flexDirection: "row",
     alignItems: "center",
@@ -1041,5 +1065,5 @@ const styles = StyleSheet.create({
     marginTop: -10,
     gap: 5,
   },
-  errorText: { color: "#FF5252", fontWeight: "bold", fontSize: 12 },
+  errorText: { color: "#FF5252", fontFamily: Fonts.bold, fontSize: 12 },
 });

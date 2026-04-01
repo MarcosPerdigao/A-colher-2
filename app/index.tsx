@@ -21,8 +21,13 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { AuthService } from "../src/services/auth";
 import { CustomAlert } from "../src/components/CustomAlert";
 import { useTheme } from "../src/context/ThemeContext";
-import { registerForPushNotificationsAsync } from "../src/services/notifications";
-import { agendarLembretesAniversario } from "../src/services/notifications";
+import { Fonts } from "../constants/theme"; // <-- IMPORT DA FONTE
+
+// IMPORT CORRIGIDO
+import {
+  NotificationService,
+  agendarLembretesAniversario,
+} from "../src/services/notifications";
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -47,7 +52,6 @@ export default function LoginScreen() {
   const [partnerCode, setPartnerCode] = useState("");
   const [birthDate, setBirthDate] = useState("");
   const [anniversaryDate, setAnniversaryDate] = useState("");
-  // Adiciona este estado
   const [relationshipStatus, setRelationshipStatus] = useState<
     "namorando" | "casados"
   >("namorando");
@@ -60,7 +64,6 @@ export default function LoginScreen() {
     setAlertConfig({ visible: true, title, message, type });
   };
 
-  // --- TRADUTOR DE ERROS DO FIREBASE ---
   const getFriendlyErrorMessage = (errorCode: string) => {
     switch (errorCode) {
       case "auth/invalid-email":
@@ -70,7 +73,7 @@ export default function LoginScreen() {
       case "auth/user-not-found":
       case "auth/wrong-password":
       case "auth/invalid-credential":
-        return "E-mail ou senha incorretos."; // Mensagem genérica para segurança
+        return "E-mail ou senha incorretos.";
       case "auth/email-already-in-use":
         return "Este e-mail já está sendo usado.";
       case "auth/weak-password":
@@ -84,7 +87,7 @@ export default function LoginScreen() {
 
   const handleDateChange = (text: string, setter: (val: string) => void) => {
     let cleaned = text.replace(/[^0-9]/g, "");
-    if (cleaned.length > 8) cleaned = cleaned.substring(0, 8); // Limita a 8 dígitos (DDMMAAAA)
+    if (cleaned.length > 8) cleaned = cleaned.substring(0, 8);
 
     if (cleaned.length >= 5) {
       setter(
@@ -134,17 +137,17 @@ export default function LoginScreen() {
                 );
               }
 
-              registerForPushNotificationsAsync().then((token) => {
-                if (token && user.uid) {
-                  AuthService.updatePushToken(user.uid, token);
-                }
-              });
+              NotificationService.registerForPushNotificationsAsync().then(
+                (token) => {
+                  if (token && user.uid) {
+                    AuthService.updatePushToken(user.uid, token);
+                  }
+                },
+              );
 
-              router.replace("/mural");
+              router.replace("/(tabs)/mural");
             } else {
-              // Se tiver a flag @force_setup, a gente consome ela (apaga) e mostra a tela de setup
               if (forceSetup) await AsyncStorage.removeItem("@force_setup");
-
               setViewState("setup");
               setLoading(false);
             }
@@ -172,14 +175,11 @@ export default function LoginScreen() {
 
     setLoading(true);
     try {
-      // Pedimos permissão de notificação ANTES de tentar logar/criar
-      // Isso garante que o popup apareça no momento de ação do usuário
-      await registerForPushNotificationsAsync();
+      await NotificationService.registerForPushNotificationsAsync();
 
       if (isRegistering) await AuthService.register(email, password);
       else await AuthService.login(email, password);
     } catch (error: any) {
-      // Aqui usamos nosso tradutor
       const friendlyMsg = getFriendlyErrorMessage(error.code || error.message);
       showAlert("Atenção", friendlyMsg, "error");
       setLoading(false);
@@ -245,19 +245,14 @@ export default function LoginScreen() {
       let finalCode = "";
 
       if (setupMode === "create") {
-        // Gera um código aleatório de 6 dígitos
         finalCode = Math.floor(100000 + Math.random() * 900000).toString();
       } else {
-        // MODO JOIN: Vamos verificar se o código é válido E SE NÃO É O SEU PRÓPRIO
         const db = getFirestore();
         const coupleRef = await getDoc(doc(db, "couples", partnerCode));
 
         if (!coupleRef.exists()) throw new Error("Código não encontrado!");
-
         const coupleData = coupleRef.data();
 
-        // --- 🛡️ O IF QUE SALVA O DIA 🛡️ ---
-        // Se a lista de parceiros já tem o seu ID, você está tentando entrar no seu próprio código.
         if (coupleData?.partners && coupleData.partners.includes(user.uid)) {
           setLoading(false);
           return showAlert(
@@ -267,7 +262,6 @@ export default function LoginScreen() {
           );
         }
 
-        // Verifica se o casal já está cheio (opcional, mas bom ter)
         if (coupleData?.partners && coupleData.partners.length >= 2) {
           setLoading(false);
           return showAlert(
@@ -297,9 +291,9 @@ export default function LoginScreen() {
         setLoading(false);
         showAlert("Sucesso!", "Código criado.", "success");
         setTimeout(() => handleShareCode(finalCode), 1000);
-        router.replace("/mural");
+        router.replace("/(tabs)/mural");
       } else {
-        router.replace("/mural");
+        router.replace("/(tabs)/mural");
       }
     } catch (error: any) {
       console.log(error);
@@ -333,13 +327,26 @@ export default function LoginScreen() {
         type={alertConfig.type}
         onClose={() => setAlertConfig((prev) => ({ ...prev, visible: false }))}
       />
-      <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
+      <ScrollView
+        contentContainerStyle={{ flexGrow: 1 }}
+        keyboardShouldPersistTaps="handled"
+      >
         {viewState === "auth" && (
           <View style={[styles.container, { backgroundColor: "#121212" }]}>
             <StatusBar style="light" />
             <View style={styles.content}>
-              <MaterialCommunityIcons name="lock" size={80} color="#FFD1DC" />
-              <Text style={styles.title}>A Colher</Text>
+              {/* --- LOGO CONCEPT --- */}
+              <View style={styles.logoContainer}>
+                <View style={styles.logoIconBg}>
+                  <MaterialCommunityIcons
+                    name="spoon-sugar"
+                    size={50}
+                    color="#FFD1DC"
+                  />
+                </View>
+                <Text style={styles.logoText}>A Colher</Text>
+              </View>
+
               <Text style={styles.subtitle}>
                 {isRegistering
                   ? "Crie sua conta"
@@ -361,7 +368,7 @@ export default function LoginScreen() {
                 secureTextEntry
                 value={password}
                 onChangeText={setPassword}
-                autoCapitalize="none" // <--- AQUI ESTÁ A CORREÇÃO DO TECLADO
+                autoCapitalize="none"
               />
               <TouchableOpacity style={styles.mainButton} onPress={handleAuth}>
                 <Text style={styles.btnText}>
@@ -369,7 +376,6 @@ export default function LoginScreen() {
                 </Text>
               </TouchableOpacity>
 
-              {/* --- NOVO BOTÃO DE ESQUECI A SENHA --- */}
               {!isRegistering && (
                 <TouchableOpacity
                   onPress={handleForgotPassword}
@@ -401,19 +407,33 @@ export default function LoginScreen() {
           >
             <StatusBar style={isFemaleTheme ? "dark" : "light"} />
             <View style={styles.content}>
-              <MaterialCommunityIcons
-                name="spoon-sugar"
-                size={60}
-                color={isFemaleTheme ? "#FFD1DC" : "#546E7A"}
-              />
-              <Text
-                style={[
-                  styles.title,
-                  { color: isFemaleTheme ? "#5D4037" : "#ECEFF1" },
-                ]}
-              >
-                Quase lá!
-              </Text>
+              {/* --- LOGO CONCEPT (SETUP MODE) --- */}
+              <View style={[styles.logoContainer, { marginBottom: 20 }]}>
+                <View
+                  style={[
+                    styles.logoIconBg,
+                    { backgroundColor: isFemaleTheme ? "#FCE4EC" : "#1A1A1A" },
+                  ]}
+                >
+                  <MaterialCommunityIcons
+                    name="spoon-sugar"
+                    size={40}
+                    color={isFemaleTheme ? "#FFD1DC" : "#546E7A"}
+                  />
+                </View>
+                <Text
+                  style={[
+                    styles.logoText,
+                    {
+                      fontSize: 24,
+                      color: isFemaleTheme ? "#5D4037" : "#ECEFF1",
+                    },
+                  ]}
+                >
+                  A Colher
+                </Text>
+              </View>
+
               <Text
                 style={[
                   styles.subtitle,
@@ -460,7 +480,7 @@ export default function LoginScreen() {
                   </Text>
                 </TouchableOpacity>
               </View>
-              {/* --- NOVO SELETOR DE STATUS --- */}
+
               <View
                 style={[
                   styles.switchContainer,
@@ -510,6 +530,7 @@ export default function LoginScreen() {
                   </Text>
                 </TouchableOpacity>
               </View>
+
               <TextInput
                 placeholder="Seu Apelido"
                 placeholderTextColor="#999"
@@ -608,13 +629,31 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     flex: 1,
   },
-  title: {
-    fontSize: 32,
-    fontWeight: "bold",
-    marginBottom: 5,
-    color: "#ECEFF1",
+
+  // ESTILOS DA LOGO
+  logoContainer: { alignItems: "center", marginBottom: 30 },
+  logoIconBg: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: "#1E1E1E",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 15,
+    elevation: 5,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
   },
-  subtitle: { fontSize: 16, marginBottom: 40, color: "#90A4AE" },
+  logoText: { fontSize: 32, fontFamily: Fonts.black, color: "#ECEFF1" },
+
+  subtitle: {
+    fontSize: 16,
+    marginBottom: 40,
+    color: "#90A4AE",
+    fontFamily: Fonts.regular,
+  },
   inputDark: {
     width: "100%",
     padding: 15,
@@ -623,6 +662,7 @@ const styles = StyleSheet.create({
     color: "#FFF",
     marginBottom: 15,
     fontSize: 16,
+    fontFamily: Fonts.regular,
   },
   inputBase: {
     width: "100%",
@@ -631,6 +671,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     marginBottom: 15,
     fontSize: 16,
+    fontFamily: Fonts.regular,
   },
   mainButton: {
     width: "100%",
@@ -640,12 +681,13 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     backgroundColor: "#FFD1DC",
   },
-  btnText: { fontWeight: "bold", fontSize: 16, color: "#5D4037" },
+  btnText: { fontFamily: Fonts.bold, fontSize: 16, color: "#5D4037" },
   linkText: {
     marginTop: 10,
     textDecorationLine: "underline",
     color: "#90A4AE",
-    marginBottom: 20, // Aumentei um pouco aqui para dar margem embaixo no scroll
+    marginBottom: 20,
+    fontFamily: Fonts.regular,
   },
   switchContainer: {
     flexDirection: "row",
@@ -655,5 +697,5 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   switchButton: { paddingVertical: 8, paddingHorizontal: 20, borderRadius: 8 },
-  switchText: { fontWeight: "bold" },
+  switchText: { fontFamily: Fonts.bold },
 });

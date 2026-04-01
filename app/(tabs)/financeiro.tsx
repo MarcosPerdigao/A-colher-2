@@ -1,25 +1,28 @@
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useMemo, useRef } from "react";
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
-  ScrollView,
   StatusBar,
-  Modal,
-  KeyboardAvoidingView,
-  Platform,
-  TextInput,
   FlatList,
   Alert,
-  Keyboard,
-  TouchableWithoutFeedback,
   ActivityIndicator,
+  Keyboard,
+  ScrollView, // <-- O ScrollView nativo voltou para a tela principal
 } from "react-native";
 import { Stack, useFocusEffect } from "expo-router";
 import { MaterialCommunityIcons, AntDesign } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../../src/context/ThemeContext";
+import { Fonts } from "../../constants/theme";
+
+import {
+  BottomSheetModal,
+  BottomSheetBackdrop,
+  BottomSheetScrollView, // <-- Usado APENAS dentro das gavetas
+  BottomSheetTextInput,
+} from "@gorhom/bottom-sheet";
 
 import { FinanceConfigModal } from "../../src/components/FinanceConfigModal";
 import { FinanceService } from "../../src/services/finance";
@@ -60,8 +63,6 @@ export default function FinanceiroScreen() {
   const [selectedMonth, setSelectedMonth] = useState("");
   const [gastos, setGastos] = useState<any[]>([]);
 
-  const [showModal, setShowModal] = useState(false);
-  const [showOptions, setShowOptions] = useState(false);
   const [selectedItem, setSelectedItem] = useState<any>(null);
 
   const [movName, setMovName] = useState("");
@@ -82,10 +83,27 @@ export default function FinanceiroScreen() {
     "Outros",
   ];
 
-  // ESTADOS DO MODAL DE CONFIGURAÇÃO FINANCEIRA
   const [showFinanceModal, setShowFinanceModal] = useState(false);
   const [currentSettings, setCurrentSettings] = useState<any>(null);
   const [loadingSettings, setLoadingSettings] = useState(false);
+
+  const formSheetRef = useRef<BottomSheetModal>(null);
+  const optionsSheetRef = useRef<BottomSheetModal>(null);
+
+  const formSnapPoints = useMemo(() => ["85%", "95%"], []);
+  const optionsSnapPoints = useMemo(() => ["35%"], []);
+
+  const renderBackdrop = useCallback(
+    (props: any) => (
+      <BottomSheetBackdrop
+        {...props}
+        disappearsOnIndex={-1}
+        appearsOnIndex={0}
+        pressBehavior="close"
+      />
+    ),
+    [],
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -136,13 +154,14 @@ export default function FinanceiroScreen() {
     };
 
     setGastos([newItem, ...gastos]);
-    setShowModal(false);
+    Keyboard.dismiss();
+    formSheetRef.current?.dismiss();
     resetForm();
   };
 
   const handleDelete = () => {
     setGastos(gastos.filter((item) => item.id !== selectedItem.id));
-    setShowOptions(false);
+    optionsSheetRef.current?.dismiss();
   };
 
   const handleCurrencyChange = (value: string) => {
@@ -169,10 +188,14 @@ export default function FinanceiroScreen() {
     setCustomCategory("");
   };
 
+  const openForm = () => {
+    resetForm();
+    formSheetRef.current?.present();
+  };
+
   const listData = gastos.filter((i) => i.month === selectedMonth);
   const titleColorOnPrimary = isFemale ? "#5D4037" : "#FFFFFF";
 
-  // Formata a Renda Mensal com base no Float real salvo no banco (sem divisão fantasma)
   const displayIncome = currentSettings?.monthlyIncome
     ? `R$ ${currentSettings.monthlyIncome
         .toFixed(2)
@@ -222,6 +245,7 @@ export default function FinanceiroScreen() {
         />
       </View>
 
+      {/* AQUI ESTAVA O ERRO: Voltou a ser o ScrollView normal */}
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 130 }}
@@ -286,7 +310,12 @@ export default function FinanceiroScreen() {
           </Text>
           {listData.length === 0 ? (
             <Text
-              style={{ color: colors.sub, textAlign: "center", marginTop: 20 }}
+              style={{
+                color: colors.sub,
+                textAlign: "center",
+                marginTop: 20,
+                fontFamily: Fonts.regular,
+              }}
             >
               Nenhum gasto registrado este mês.
             </Text>
@@ -297,7 +326,7 @@ export default function FinanceiroScreen() {
                 style={[styles.itemCard, { backgroundColor: colors.card }]}
                 onPress={() => {
                   setSelectedItem(item);
-                  setShowOptions(true);
+                  optionsSheetRef.current?.present();
                 }}
               >
                 <View style={styles.itemLeft}>
@@ -336,333 +365,317 @@ export default function FinanceiroScreen() {
           styles.fab,
           { backgroundColor: colors.primary, bottom: insets.bottom + 34 },
         ]}
-        onPress={() => {
-          resetForm();
-          setShowModal(true);
-        }}
+        onPress={openForm}
       >
         <AntDesign name="plus" size={28} color={titleColorOnPrimary} />
       </TouchableOpacity>
 
-      <Modal animationType="slide" transparent={true} visible={showModal}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          style={{ flex: 1 }}
+      <BottomSheetModal
+        ref={formSheetRef}
+        index={0}
+        snapPoints={formSnapPoints}
+        backdropComponent={renderBackdrop}
+        backgroundStyle={{ backgroundColor: colors.card }}
+        handleIndicatorStyle={{ backgroundColor: colors.sub }}
+        keyboardBehavior="extend"
+      >
+        <BottomSheetScrollView
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{
+            padding: 30,
+            paddingBottom: insets.bottom + 60,
+          }}
         >
-          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-            <View style={styles.modalOverlay}>
-              <TouchableWithoutFeedback onPress={() => {}}>
-                <View
-                  style={[
-                    styles.modalView,
-                    {
-                      backgroundColor: colors.card,
-                      paddingBottom: insets.bottom + 20,
-                    },
-                  ]}
-                >
-                  <View style={styles.modalHeader}>
-                    <Text style={[styles.modalTitle, { color: colors.text }]}>
-                      Nova Despesa
-                    </Text>
-                    <TouchableOpacity onPress={() => setShowModal(false)}>
-                      <AntDesign name="close" size={24} color={colors.sub} />
-                    </TouchableOpacity>
-                  </View>
+          <View style={styles.modalHeader}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>
+              Nova Despesa
+            </Text>
+            <TouchableOpacity onPress={() => formSheetRef.current?.dismiss()}>
+              <AntDesign name="close" size={24} color={colors.sub} />
+            </TouchableOpacity>
+          </View>
 
-                  <ScrollView
-                    showsVerticalScrollIndicator={false}
-                    keyboardShouldPersistTaps="handled"
-                    contentContainerStyle={{ paddingBottom: 60 }}
-                  >
-                    <Text style={styles.label}>Nome</Text>
-                    <TextInput
-                      style={[
-                        styles.input,
-                        {
-                          backgroundColor: colors.bg,
-                          color: colors.text,
-                          borderColor: colors.border,
-                        },
-                      ]}
-                      value={movName}
-                      onChangeText={setMovName}
-                      placeholderTextColor={colors.sub}
-                      placeholder="Ex: Conta de Luz"
-                    />
+          <Text style={styles.label}>Nome</Text>
+          <BottomSheetTextInput
+            style={[
+              styles.input,
+              {
+                backgroundColor: colors.bg,
+                color: colors.text,
+                borderColor: colors.border,
+              },
+            ]}
+            value={movName}
+            onChangeText={setMovName}
+            placeholderTextColor={colors.sub}
+            placeholder="Ex: Conta de Luz"
+          />
 
-                    <View style={styles.row}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.label}>Valor</Text>
-                        <TextInput
-                          style={[
-                            styles.input,
-                            {
-                              backgroundColor: colors.bg,
-                              color: colors.text,
-                              borderColor: colors.border,
-                              marginBottom: 0,
-                            },
-                          ]}
-                          keyboardType="numeric"
-                          value={movAmount}
-                          onChangeText={handleCurrencyChange}
-                          placeholderTextColor={colors.sub}
-                          placeholder="R$ 0,00"
-                        />
-                      </View>
-
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.label}>Data</Text>
-                        <TextInput
-                          style={[
-                            styles.input,
-                            {
-                              backgroundColor: colors.bg,
-                              color: colors.text,
-                              borderColor: colors.border,
-                              marginBottom: 0,
-                            },
-                          ]}
-                          keyboardType="numeric"
-                          maxLength={10}
-                          value={movDate}
-                          onChangeText={setMovDate}
-                          placeholderTextColor={colors.sub}
-                          placeholder="DD/MM/AAAA"
-                        />
-                      </View>
-                    </View>
-
-                    <View style={{ height: 20 }} />
-
-                    {/* NOVO CAMPO: Quem Pagou? */}
-                    <Text style={styles.label}>Quem Pagou?</Text>
-                    <View style={styles.optionsRow}>
-                      <TouchableOpacity
-                        onPress={() => setExpenseOwner("eu")}
-                        style={[
-                          styles.typeBtn,
-                          expenseOwner === "eu" && {
-                            backgroundColor: colors.accent,
-                            borderColor: colors.accent,
-                          },
-                        ]}
-                      >
-                        <Text
-                          style={{
-                            color: expenseOwner === "eu" ? "#FFF" : colors.sub,
-                            fontWeight: "bold",
-                          }}
-                        >
-                          Eu
-                        </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={() => setExpenseOwner("parceiro")}
-                        style={[
-                          styles.typeBtn,
-                          expenseOwner === "parceiro" && {
-                            backgroundColor: colors.primary,
-                            borderColor: colors.primary,
-                          },
-                        ]}
-                      >
-                        <Text
-                          style={{
-                            color:
-                              expenseOwner === "parceiro"
-                                ? titleColorOnPrimary
-                                : colors.sub,
-                            fontWeight: "bold",
-                          }}
-                        >
-                          Parceira(o)
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-
-                    <Text style={styles.label}>Tipo de Gasto</Text>
-                    <View style={styles.optionsRow}>
-                      <TouchableOpacity
-                        onPress={() => setMovType("variavel")}
-                        style={[
-                          styles.typeBtn,
-                          movType === "variavel" && {
-                            backgroundColor: colors.accent,
-                            borderColor: colors.accent,
-                          },
-                        ]}
-                      >
-                        <Text
-                          style={{
-                            color: movType === "variavel" ? "#FFF" : colors.sub,
-                            fontWeight: "bold",
-                          }}
-                        >
-                          Variável
-                        </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={() => setMovType("fixo")}
-                        style={[
-                          styles.typeBtn,
-                          movType === "fixo" && {
-                            backgroundColor: colors.danger,
-                            borderColor: colors.danger,
-                          },
-                        ]}
-                      >
-                        <Text
-                          style={{
-                            color: movType === "fixo" ? "#FFF" : colors.sub,
-                            fontWeight: "bold",
-                          }}
-                        >
-                          Fixo
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-
-                    <Text style={styles.label}>Categoria</Text>
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      style={{ marginBottom: 20 }}
-                    >
-                      {categories.map((cat) => (
-                        <TouchableOpacity
-                          key={cat}
-                          onPress={() => {
-                            setMovCategory(cat);
-                            setIsAddingNewCategory(false);
-                          }}
-                          style={[
-                            styles.catBtn,
-                            movCategory === cat && {
-                              backgroundColor: colors.primary,
-                            },
-                          ]}
-                        >
-                          <Text
-                            style={{
-                              color:
-                                movCategory === cat
-                                  ? titleColorOnPrimary
-                                  : colors.sub,
-                              fontWeight: "bold",
-                            }}
-                          >
-                            {cat}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                      <TouchableOpacity
-                        onPress={() => setIsAddingNewCategory(true)}
-                        style={[
-                          styles.catBtn,
-                          isAddingNewCategory && {
-                            backgroundColor: colors.accent,
-                          },
-                        ]}
-                      >
-                        <Text
-                          style={{
-                            color: isAddingNewCategory ? "#FFF" : colors.sub,
-                            fontWeight: "bold",
-                          }}
-                        >
-                          + Outra
-                        </Text>
-                      </TouchableOpacity>
-                    </ScrollView>
-
-                    {isAddingNewCategory && (
-                      <TextInput
-                        style={[
-                          styles.input,
-                          {
-                            backgroundColor: colors.bg,
-                            color: colors.text,
-                            borderColor: colors.accent,
-                          },
-                        ]}
-                        placeholderTextColor={colors.sub}
-                        placeholder="Qual categoria?"
-                        value={customCategory}
-                        onChangeText={setCustomCategory}
-                      />
-                    )}
-
-                    <TouchableOpacity
-                      style={[
-                        styles.saveBtn,
-                        { backgroundColor: colors.danger },
-                      ]}
-                      onPress={handleSave}
-                    >
-                      <Text
-                        style={{
-                          color: "#FFF",
-                          fontWeight: "bold",
-                          fontSize: 16,
-                        }}
-                      >
-                        Salvar Despesa
-                      </Text>
-                    </TouchableOpacity>
-                  </ScrollView>
-                </View>
-              </TouchableWithoutFeedback>
+          <View style={styles.row}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.label}>Valor</Text>
+              <BottomSheetTextInput
+                style={[
+                  styles.input,
+                  {
+                    backgroundColor: colors.bg,
+                    color: colors.text,
+                    borderColor: colors.border,
+                    marginBottom: 0,
+                  },
+                ]}
+                keyboardType="numeric"
+                value={movAmount}
+                onChangeText={handleCurrencyChange}
+                placeholderTextColor={colors.sub}
+                placeholder="R$ 0,00"
+              />
             </View>
-          </TouchableWithoutFeedback>
-        </KeyboardAvoidingView>
-      </Modal>
 
-      <Modal visible={showOptions} transparent animationType="fade">
-        <TouchableOpacity
-          style={styles.modalOverlayOptions}
-          activeOpacity={1}
-          onPress={() => setShowOptions(false)}
-        >
-          <View style={[styles.optionsMenu, { backgroundColor: colors.card }]}>
-            <Text
+            <View style={{ flex: 1 }}>
+              <Text style={styles.label}>Data</Text>
+              <BottomSheetTextInput
+                style={[
+                  styles.input,
+                  {
+                    backgroundColor: colors.bg,
+                    color: colors.text,
+                    borderColor: colors.border,
+                    marginBottom: 0,
+                  },
+                ]}
+                keyboardType="numeric"
+                maxLength={10}
+                value={movDate}
+                onChangeText={setMovDate}
+                placeholderTextColor={colors.sub}
+                placeholder="DD/MM/AAAA"
+              />
+            </View>
+          </View>
+
+          <View style={{ height: 20 }} />
+
+          <Text style={styles.label}>Quem Pagou?</Text>
+          <View style={styles.optionsRow}>
+            <TouchableOpacity
+              onPress={() => setExpenseOwner("eu")}
               style={[
-                styles.modalTitle,
-                { color: colors.text, marginBottom: 20, textAlign: "center" },
+                styles.typeBtn,
+                expenseOwner === "eu" && {
+                  backgroundColor: colors.accent,
+                  borderColor: colors.accent,
+                },
               ]}
             >
-              O que deseja fazer?
-            </Text>
-            <TouchableOpacity
-              style={styles.optionBtn}
-              onPress={() => {
-                setShowOptions(false);
-                setShowModal(true);
-                setMovName(selectedItem?.title);
-              }}
-            >
-              <AntDesign name="edit" size={20} color={colors.primary} />
               <Text
-                style={{ color: colors.text, marginLeft: 10, fontSize: 16 }}
+                style={{
+                  color: expenseOwner === "eu" ? "#FFF" : colors.sub,
+                  fontFamily: Fonts.bold,
+                }}
               >
-                Editar
+                Eu
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.optionBtn, { borderBottomWidth: 0 }]}
-              onPress={handleDelete}
+              onPress={() => setExpenseOwner("parceiro")}
+              style={[
+                styles.typeBtn,
+                expenseOwner === "parceiro" && {
+                  backgroundColor: colors.primary,
+                  borderColor: colors.primary,
+                },
+              ]}
             >
-              <AntDesign name="delete" size={20} color={colors.danger} />
               <Text
-                style={{ color: colors.danger, marginLeft: 10, fontSize: 16 }}
+                style={{
+                  color:
+                    expenseOwner === "parceiro"
+                      ? titleColorOnPrimary
+                      : colors.sub,
+                  fontFamily: Fonts.bold,
+                }}
               >
-                Excluir
+                Parceira(o)
               </Text>
             </TouchableOpacity>
           </View>
-        </TouchableOpacity>
-      </Modal>
+
+          <Text style={styles.label}>Tipo de Gasto</Text>
+          <View style={styles.optionsRow}>
+            <TouchableOpacity
+              onPress={() => setMovType("variavel")}
+              style={[
+                styles.typeBtn,
+                movType === "variavel" && {
+                  backgroundColor: colors.accent,
+                  borderColor: colors.accent,
+                },
+              ]}
+            >
+              <Text
+                style={{
+                  color: movType === "variavel" ? "#FFF" : colors.sub,
+                  fontFamily: Fonts.bold,
+                }}
+              >
+                Variável
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setMovType("fixo")}
+              style={[
+                styles.typeBtn,
+                movType === "fixo" && {
+                  backgroundColor: colors.danger,
+                  borderColor: colors.danger,
+                },
+              ]}
+            >
+              <Text
+                style={{
+                  color: movType === "fixo" ? "#FFF" : colors.sub,
+                  fontFamily: Fonts.bold,
+                }}
+              >
+                Fixo
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.label}>Categoria</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={{ marginBottom: 20 }}
+          >
+            {categories.map((cat) => (
+              <TouchableOpacity
+                key={cat}
+                onPress={() => {
+                  setMovCategory(cat);
+                  setIsAddingNewCategory(false);
+                }}
+                style={[
+                  styles.catBtn,
+                  movCategory === cat && { backgroundColor: colors.primary },
+                ]}
+              >
+                <Text
+                  style={{
+                    color:
+                      movCategory === cat ? titleColorOnPrimary : colors.sub,
+                    fontFamily: Fonts.bold,
+                  }}
+                >
+                  {cat}
+                </Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity
+              onPress={() => setIsAddingNewCategory(true)}
+              style={[
+                styles.catBtn,
+                isAddingNewCategory && { backgroundColor: colors.accent },
+              ]}
+            >
+              <Text
+                style={{
+                  color: isAddingNewCategory ? "#FFF" : colors.sub,
+                  fontFamily: Fonts.bold,
+                }}
+              >
+                + Outra
+              </Text>
+            </TouchableOpacity>
+          </ScrollView>
+
+          {isAddingNewCategory && (
+            <BottomSheetTextInput
+              style={[
+                styles.input,
+                {
+                  backgroundColor: colors.bg,
+                  color: colors.text,
+                  borderColor: colors.accent,
+                },
+              ]}
+              placeholderTextColor={colors.sub}
+              placeholder="Qual categoria?"
+              value={customCategory}
+              onChangeText={setCustomCategory}
+            />
+          )}
+
+          <TouchableOpacity
+            style={[styles.saveBtn, { backgroundColor: colors.danger }]}
+            onPress={handleSave}
+          >
+            <Text
+              style={{ color: "#FFF", fontFamily: Fonts.bold, fontSize: 16 }}
+            >
+              Salvar Despesa
+            </Text>
+          </TouchableOpacity>
+        </BottomSheetScrollView>
+      </BottomSheetModal>
+
+      <BottomSheetModal
+        ref={optionsSheetRef}
+        index={0}
+        snapPoints={optionsSnapPoints}
+        backdropComponent={renderBackdrop}
+        backgroundStyle={{ backgroundColor: colors.card }}
+        handleIndicatorStyle={{ backgroundColor: colors.sub }}
+      >
+        <View style={{ padding: 25 }}>
+          <Text
+            style={[
+              styles.modalTitle,
+              { color: colors.text, marginBottom: 20, textAlign: "center" },
+            ]}
+          >
+            O que deseja fazer?
+          </Text>
+          <TouchableOpacity
+            style={styles.optionBtn}
+            onPress={() => {
+              optionsSheetRef.current?.dismiss();
+              formSheetRef.current?.present();
+              setMovName(selectedItem?.title);
+            }}
+          >
+            <AntDesign name="edit" size={20} color={colors.primary} />
+            <Text
+              style={{
+                color: colors.text,
+                marginLeft: 10,
+                fontSize: 16,
+                fontFamily: Fonts.semiBold,
+              }}
+            >
+              Editar
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.optionBtn, { borderBottomWidth: 0 }]}
+            onPress={handleDelete}
+          >
+            <AntDesign name="delete" size={20} color={colors.danger} />
+            <Text
+              style={{
+                color: colors.danger,
+                marginLeft: 10,
+                fontSize: 16,
+                fontFamily: Fonts.semiBold,
+              }}
+            >
+              Excluir
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </BottomSheetModal>
 
       <FinanceConfigModal
         visible={showFinanceModal}
@@ -678,19 +691,19 @@ export default function FinanceiroScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { alignItems: "center", paddingBottom: 15 },
-  headerTitle: { fontSize: 24, fontWeight: "900" },
+  headerTitle: { fontSize: 24, fontFamily: Fonts.black },
   monthListContainer: { marginBottom: 15 },
   monthPill: { paddingHorizontal: 18, paddingVertical: 8, borderRadius: 20 },
-  monthText: { fontSize: 14, fontWeight: "bold" },
+  monthText: { fontSize: 14, fontFamily: Fonts.bold },
   balanceCard: { borderRadius: 24, padding: 24 },
   balanceLabel: {
     fontSize: 14,
-    fontWeight: "700",
+    fontFamily: Fonts.bold,
     marginBottom: 6,
     opacity: 0.9,
   },
-  balanceValue: { fontSize: 30, fontWeight: "900" },
-  sectionTitle: { fontSize: 18, fontWeight: "800" },
+  balanceValue: { fontSize: 30, fontFamily: Fonts.black },
+  sectionTitle: { fontSize: 18, fontFamily: Fonts.black },
   itemCard: {
     borderRadius: 18,
     padding: 16,
@@ -709,9 +722,9 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   textWrap: { flex: 1 },
-  itemTitle: { fontSize: 16, fontWeight: "800" },
-  itemSubtitle: { fontSize: 12, marginTop: 2 },
-  itemAmount: { fontSize: 15, fontWeight: "800" },
+  itemTitle: { fontSize: 16, fontFamily: Fonts.bold },
+  itemSubtitle: { fontSize: 12, marginTop: 2, fontFamily: Fonts.regular },
+  itemAmount: { fontSize: 15, fontFamily: Fonts.bold },
   fab: {
     position: "absolute",
     right: 20,
@@ -722,33 +735,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     elevation: 6,
   },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: "flex-end",
-    backgroundColor: "rgba(0,0,0,0.6)",
-  },
-  modalOverlayOptions: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "rgba(0,0,0,0.6)",
-    padding: 20,
-  },
-  modalView: {
-    borderTopLeftRadius: 35,
-    borderTopRightRadius: 35,
-    padding: 30,
-    maxHeight: "90%",
-  },
+
   modalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     marginBottom: 20,
   },
-  modalTitle: { fontSize: 20, fontWeight: "800" },
+  modalTitle: { fontSize: 20, fontFamily: Fonts.black },
   label: {
     fontSize: 11,
-    fontWeight: "bold",
+    fontFamily: Fonts.bold,
     marginBottom: 8,
     textTransform: "uppercase",
     color: "#888",
@@ -759,6 +755,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     fontSize: 16,
     borderWidth: 1,
+    fontFamily: Fonts.regular,
   },
   row: { flexDirection: "row", gap: 15 },
   optionsRow: { flexDirection: "row", gap: 10, marginBottom: 20 },
@@ -784,7 +781,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 10,
   },
-  optionsMenu: { width: "100%", borderRadius: 25, padding: 25 },
   optionBtn: {
     flexDirection: "row",
     alignItems: "center",

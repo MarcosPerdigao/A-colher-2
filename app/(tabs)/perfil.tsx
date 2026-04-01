@@ -30,6 +30,7 @@ import { TaskService, Task, checkTaskStatus } from "../../src/services/tasks";
 import { AuthService } from "../../src/services/auth";
 import { CustomAlert } from "../../src/components/CustomAlert";
 import { useTheme } from "../../src/context/ThemeContext";
+import { Fonts } from "../../constants/theme"; // <-- IMPORT DA FONTE AQUI
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
@@ -44,7 +45,6 @@ export default function ProfileScreen() {
   const [streak, setStreak] = useState("0");
   const [tasksCompleted, setTasksCompleted] = useState(0);
 
-  // HISTÓRICO
   const [tasksPendingCount, setTasksPendingCount] = useState(0);
   const [pendingList, setPendingList] = useState<Task[]>([]);
   const [showHistory, setShowHistory] = useState(false);
@@ -191,9 +191,7 @@ export default function ProfileScreen() {
         <Text style={[styles.historyTitle, { color: colors.text }]}>
           {item.title}
         </Text>
-        <Text
-          style={[styles.historyDate, { color: "#EF5350", fontWeight: "bold" }]}
-        >
+        <Text style={[styles.historyDate, { color: "#EF5350" }]}>
           Venceu em: {item.date || "Data desconhecida"}
         </Text>
       </View>
@@ -349,7 +347,6 @@ export default function ProfileScreen() {
           CONFIGURAÇÕES
         </Text>
 
-        {/* --- 1. BOTÃO: VINCULAR CASAL --- */}
         <TouchableOpacity
           style={[styles.optionButton, { backgroundColor: colors.card }]}
           onPress={() => router.push("/vincular")}
@@ -374,7 +371,6 @@ export default function ProfileScreen() {
           <MaterialIcons name="chevron-right" size={24} color={colors.sub} />
         </TouchableOpacity>
 
-        {/* --- 2. BOTÃO: ALTERAR TEMA --- */}
         <TouchableOpacity
           style={[
             styles.optionButton,
@@ -402,7 +398,6 @@ export default function ProfileScreen() {
           <MaterialIcons name="chevron-right" size={24} color={colors.sub} />
         </TouchableOpacity>
 
-        {/* --- 3. BOTÃO: TUTORIAL --- */}
         <TouchableOpacity
           style={[
             styles.optionButton,
@@ -445,7 +440,6 @@ export default function ProfileScreen() {
         <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* --- MODAL DE HISTÓRICO --- */}
       <Modal visible={showHistory} animationType="slide" transparent={true}>
         <View style={styles.modalOverlay}>
           <View
@@ -465,7 +459,13 @@ export default function ProfileScreen() {
                 <AntDesign name="close" size={24} color={colors.sub} />
               </TouchableOpacity>
             </View>
-            <Text style={{ color: colors.sub, marginBottom: 15 }}>
+            <Text
+              style={{
+                color: colors.sub,
+                marginBottom: 15,
+                fontFamily: Fonts.regular,
+              }}
+            >
               Estas tarefas contaram pontos negativos na gamificação:
             </Text>
             <FlatList
@@ -474,7 +474,9 @@ export default function ProfileScreen() {
               renderItem={renderPendingTask}
               ListEmptyComponent={
                 <View style={{ padding: 20, alignItems: "center" }}>
-                  <Text style={{ color: colors.sub }}>
+                  <Text
+                    style={{ color: colors.sub, fontFamily: Fonts.regular }}
+                  >
                     Tudo limpo! Nenhuma penalidade. 🎉
                   </Text>
                 </View>
@@ -490,11 +492,11 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { alignItems: "center", marginBottom: 20, marginTop: 10 },
-  title: { fontSize: 24, fontWeight: "bold" },
+  title: { fontSize: 24, fontFamily: Fonts.black },
   content: { paddingHorizontal: 20 },
   sectionTitle: {
     fontSize: 12,
-    fontWeight: "bold",
+    fontFamily: Fonts.bold,
     marginBottom: 10,
     marginLeft: 5,
   },
@@ -527,7 +529,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: "#FFF",
   },
-  name: { fontSize: 24, fontWeight: "bold", marginBottom: 15 },
+  name: { fontSize: 24, fontFamily: Fonts.bold, marginBottom: 15 },
   codeContainer: {
     alignItems: "center",
     padding: 10,
@@ -535,8 +537,8 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.03)",
     width: "100%",
   },
-  codeLabel: { fontSize: 12, marginBottom: 4 },
-  code: { fontSize: 18, fontWeight: "bold", letterSpacing: 1 },
+  codeLabel: { fontSize: 12, marginBottom: 4, fontFamily: Fonts.regular },
+  code: { fontSize: 18, fontFamily: Fonts.bold, letterSpacing: 1 },
   statsRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -551,8 +553,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     elevation: 2,
   },
-  statNumber: { fontSize: 22, fontWeight: "bold", marginTop: 8 },
-  statLabel: { fontSize: 11, color: "#888", marginTop: 2, textAlign: "center" },
+  statNumber: { fontSize: 22, fontFamily: Fonts.black, marginTop: 8 },
+  statLabel: {
+    fontSize: 11,
+    color: "#888",
+    marginTop: 2,
+    textAlign: "center",
+    fontFamily: Fonts.regular,
+  },
   optionButton: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -568,7 +576,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  optionText: { fontSize: 16, fontWeight: "600" },
+  optionText: { fontSize: 16, fontFamily: Fonts.semiBold },
   logoutBtn: {
     marginTop: 40,
     padding: 18,
@@ -578,10 +586,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "rgba(255, 82, 82, 0.05)",
   },
-  logoutText: { color: "#FF5252", fontWeight: "bold", fontSize: 16 },
+  logoutText: { color: "#FF5252", fontFamily: Fonts.bold, fontSize: 16 },
   footerContainer: { marginTop: 40, alignItems: "center", opacity: 0.6 },
-  copyrightText: { fontSize: 12, color: "#888", fontWeight: "bold" },
-  copyrightSub: { fontSize: 10, color: "#999", marginTop: 2 },
+  copyrightText: { fontSize: 12, color: "#888", fontFamily: Fonts.bold },
+  copyrightSub: {
+    fontSize: 10,
+    color: "#999",
+    marginTop: 2,
+    fontFamily: Fonts.regular,
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
@@ -599,7 +612,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 20,
   },
-  modalTitle: { fontSize: 20, fontWeight: "bold" },
+  modalTitle: { fontSize: 20, fontFamily: Fonts.black },
   historyItem: {
     flexDirection: "row",
     alignItems: "center",
@@ -609,6 +622,11 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     borderLeftWidth: 4,
   },
-  historyTitle: { fontSize: 16, fontWeight: "bold" },
-  historyDate: { fontSize: 12, color: "#888", marginTop: 4 },
+  historyTitle: { fontSize: 16, fontFamily: Fonts.bold },
+  historyDate: {
+    fontSize: 12,
+    color: "#888",
+    marginTop: 4,
+    fontFamily: Fonts.bold,
+  },
 });

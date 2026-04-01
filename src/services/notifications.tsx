@@ -7,36 +7,55 @@ Notifications.setNotificationHandler({
     shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: true,
-    shouldShowBanner: true, // <-- Adicionado para o novo padrão do Expo
-    shouldShowList: true,   // <-- Adicionado para o novo padrão do Expo
+    shouldShowBanner: true,
+    shouldShowList: true,
   }),
 });
 
-export async function registerForPushNotificationsAsync() {
-  let token;
-  if (Platform.OS === "android") {
-    await Notifications.setNotificationChannelAsync("default", {
-      name: "default",
-      importance: Notifications.AndroidImportance.MAX,
-      vibrationPattern: [0, 250, 250, 250],
-      lightColor: "#FF231F7C",
-    });
-  }
+// --- O SERVIÇO DE NOTIFICAÇÕES ---
+export const NotificationService = {
+  registerForPushNotificationsAsync: async () => {
+    let token;
+    if (Platform.OS === "android") {
+      await Notifications.setNotificationChannelAsync("default", {
+        name: "default",
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: "#FF231F7C",
+      });
+    }
 
-  const { status: existingStatus } = await Notifications.getPermissionsAsync();
-  let finalStatus = existingStatus;
-  if (existingStatus !== "granted") {
-    const { status } = await Notifications.requestPermissionsAsync();
-    finalStatus = status;
-  }
-  if (finalStatus !== "granted") {
-    return undefined;
-  }
+    const { status: existingStatus } =
+      await Notifications.getPermissionsAsync();
+    let finalStatus = existingStatus;
+    if (existingStatus !== "granted") {
+      const { status } = await Notifications.requestPermissionsAsync();
+      finalStatus = status;
+    }
+    if (finalStatus !== "granted") {
+      return undefined;
+    }
 
-  // Pegando o token de push (necessário caso use o EAS Build futuramente)
-  token = (await Notifications.getExpoPushTokenAsync()).data;
-  return token;
-}
+    token = (await Notifications.getExpoPushTokenAsync()).data;
+    return token;
+  },
+
+  notifyPartner: async (title: string, message: string) => {
+    try {
+      console.log("🔔 Simulando envio para o parceiro:", title, message);
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: title,
+          body: message,
+          sound: true,
+        },
+        trigger: null, // null faz a notificação disparar imediatamente
+      });
+    } catch (error) {
+      console.log("Erro ao enviar notificação ao parceiro:", error);
+    }
+  },
+};
 
 // --- O MOTOR DE LEMBRETES DE ANIVERSÁRIO E IDADE ---
 export const agendarLembretesAniversario = async (
@@ -44,12 +63,11 @@ export const agendarLembretesAniversario = async (
   birthDate: string,
   status: "namorando" | "casados",
 ) => {
-  // 1. Limpa os agendamentos antigos para não haver spam
   await Notifications.cancelAllScheduledNotificationsAsync();
 
   const hoje = new Date();
 
-  // Função auxiliar para agendar notificações (O "as any" resolve o erro do TS)
+  // Função auxiliar para agendar notificações
   const agendarAlerta = async (
     dataAlvo: Date,
     titulo: string,
@@ -58,12 +76,15 @@ export const agendarLembretesAniversario = async (
     if (dataAlvo.getTime() > hoje.getTime()) {
       await Notifications.scheduleNotificationAsync({
         content: { title: titulo, body: mensagem, sound: true },
-        trigger: { date: dataAlvo } as any, // 🛡️ AQUI ESTÁ A CORREÇÃO DO ERRO DO TYPE!
+        // 🛡️ CORREÇÃO: O Expo 52+ exige o type explícito no trigger
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DATE,
+          date: dataAlvo,
+        },
       });
     }
   };
 
-  // Os intervalos que você pediu
   const tempos = [
     { dias: 30, desc: "1 mês" },
     { dias: 15, desc: "15 dias" },
@@ -90,7 +111,7 @@ export const agendarLembretesAniversario = async (
     for (const t of tempos) {
       const dataAlerta = new Date(proximoAniv);
       dataAlerta.setDate(dataAlerta.getDate() - t.dias);
-      dataAlerta.setHours(10, 0, 0, 0); // Dispara às 10 da manhã
+      dataAlerta.setHours(10, 0, 0, 0);
 
       let titulo =
         t.dias === 0

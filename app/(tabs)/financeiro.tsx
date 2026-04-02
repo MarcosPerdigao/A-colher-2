@@ -70,7 +70,7 @@ export default function FinanceiroScreen() {
   const [myNickname, setMyNickname] = useState("Eu");
   const [partnerName, setPartnerName] = useState("Parceira(o)");
   const [selectedItem, setSelectedItem] = useState<Transaction | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null); // Controle de Edição
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const [isExpense, setIsExpense] = useState(true);
   const [movName, setMovName] = useState("");
@@ -244,9 +244,32 @@ export default function FinanceiroScreen() {
     }
   };
 
-  const handleDelete = async () => {
-    if (selectedItem?.id) await FinanceService.delete(selectedItem.id);
-    optionsSheetRef.current?.dismiss();
+  // 🚀 LÓGICA DE EXCLUSÃO CORRIGIDA E COM ALERTA DE SEGURANÇA
+  const handleDelete = () => {
+    if (!selectedItem?.id) return;
+
+    Alert.alert(
+      "Excluir Registro",
+      `Deseja mesmo apagar "${selectedItem.title}"?`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Sim, Excluir",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await FinanceService.delete(selectedItem.id!);
+              optionsSheetRef.current?.dismiss();
+            } catch (error) {
+              Alert.alert(
+                "Erro",
+                "Não foi possível excluir. Verifique sua internet.",
+              );
+            }
+          },
+        },
+      ],
+    );
   };
 
   const handleCurrencyChange = (value: string) => {
@@ -443,11 +466,14 @@ export default function FinanceiroScreen() {
                           : colors.success,
                     },
                   ]}
+                  onPress={() => {
+                    setSelectedItem(item);
+                    optionsSheetRef.current?.present();
+                  }}
                   onLongPress={() => {
                     setSelectedItem(item);
                     optionsSheetRef.current?.present();
                   }}
-                  delayLongPress={200}
                   activeOpacity={0.7}
                 >
                   <View style={styles.itemLeft}>
@@ -655,7 +681,6 @@ export default function FinanceiroScreen() {
           </View>
           <View style={{ height: 20 }} />
 
-          {/* SÓ MOSTRA CAMPOS AVANÇADOS SE FOR DESPESA */}
           {isExpense && (
             <>
               <Text style={styles.label}>Forma de Pagamento (Opcional)</Text>

@@ -32,8 +32,7 @@ import { TaskService, Task } from "../../src/services/tasks";
 import { NotificationService } from "../../src/services/notifications";
 import { HistoryService } from "../../src/services/history";
 import { useTheme } from "../../src/context/ThemeContext";
-import { Fonts } from "../../constants/theme"; // <-- IMPORT DA FONTE
-
+import { Fonts } from "../../constants/theme";
 import {
   getFirestore,
   doc,
@@ -50,7 +49,6 @@ export default function MuralScreen() {
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = Dimensions.get("window");
   const pagerRef = useRef<FlatList>(null);
-
   const mural = useMural(isFemale ? "feminino" : "masculino");
 
   const [newTask, setNewTask] = useState("");
@@ -62,15 +60,12 @@ export default function MuralScreen() {
   const [assignedTo, setAssignedTo] = useState<"me" | "partner" | "judge">(
     "partner",
   );
-
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showOptions, setShowOptions] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-
   const [errorTitle, setErrorTitle] = useState("");
   const [errorPriority, setErrorPriority] = useState(false);
-
   const [myPhoto, setMyPhoto] = useState<string | null>(null);
   const [partnerPhoto, setPartnerPhoto] = useState<string | null>(null);
 
@@ -83,13 +78,14 @@ export default function MuralScreen() {
       const mySnap = await getDoc(myRef);
       if (!mySnap.exists()) return;
       const myData = mySnap.data();
-
       if (myData.photoURL) setMyPhoto(myData.photoURL);
 
       const coupleCode = myData.coupleCode;
       if (coupleCode) {
-        const usersRef = collection(db, "users");
-        const q = query(usersRef, where("coupleCode", "==", coupleCode));
+        const q = query(
+          collection(db, "users"),
+          where("coupleCode", "==", coupleCode),
+        );
         const querySnapshot = await getDocs(q);
         querySnapshot.forEach((doc) => {
           if (doc.id !== auth.currentUser?.uid) {
@@ -98,9 +94,7 @@ export default function MuralScreen() {
           }
         });
       }
-    } catch (e) {
-      console.log(e);
-    }
+    } catch (e) {}
   };
 
   useFocusEffect(
@@ -119,36 +113,31 @@ export default function MuralScreen() {
     setErrorTitle("");
     setErrorPriority(false);
   };
-
   const openNewTask = () => {
     resetForm();
     setTaskDate(new Date().toLocaleDateString("pt-BR"));
     mural.toggleModal("new", true);
   };
-
   const handleLongPress = (task: Task) => {
     setSelectedTask(task);
     setShowOptions(true);
   };
 
-  const handleEditOption = () => {
+  const handleEditOption = async () => {
     if (!selectedTask) return;
-
     if (selectedTask.createdBy === "Juiz") {
       mural.showFeedback(
         "Veredito Final ⚖️",
-        "O Juiz sentenciou essa tarefa! Não cabe recurso (edição).",
+        "O Juiz sentenciou essa tarefa! Não cabe recurso.",
         "error",
       );
       setShowOptions(false);
       return;
     }
-
     setNewTask(selectedTask.title);
     setNewObs(selectedTask.observation || "");
     setTaskDate(selectedTask.date || "");
     setNewPriority(selectedTask.priority);
-
     let assign = "partner";
     if (
       selectedTask.assignedToNickname === "me" ||
@@ -157,7 +146,6 @@ export default function MuralScreen() {
       assign = "me";
     else if (selectedTask.assignedToNickname === "judge") assign = "judge";
     setAssignedTo(assign as any);
-
     setEditingId(selectedTask.id);
     setShowOptions(false);
     mural.toggleModal("new", true);
@@ -166,33 +154,29 @@ export default function MuralScreen() {
   const handleDeleteOption = () => {
     const taskToDelete = selectedTask;
     if (!taskToDelete) return;
-
     if (taskToDelete.createdBy === "Juiz") {
       mural.showFeedback(
         "Veredito Final ⚖️",
-        "Ordem do Juiz não se discute, se cumpre!",
+        "Ordem do Juiz não se discute!",
         "error",
       );
       setShowOptions(false);
       return;
     }
-
     const isMyTask =
       taskToDelete.assignedToNickname === "me" ||
       taskToDelete.assignedToNickname === mural.myNickname;
     const createdByPartner =
       taskToDelete.createdBy && taskToDelete.createdBy !== mural.myNickname;
-
     if (createdByPartner && isMyTask) {
       mural.showFeedback(
         "Sem Trapaça! 🚫",
-        `Tarefa dada pelo(a) ${mural.partnerName}. Só ele(a) pode tirar!`,
+        "Tarefa dada pelo(a) seu(sua) parceiro(a). Só ele(a) pode tirar!",
         "warning",
       );
       setShowOptions(false);
       return;
     }
-
     setShowOptions(false);
     setShowDeleteModal(true);
   };
@@ -201,22 +185,27 @@ export default function MuralScreen() {
     if (!selectedTask) return;
     const taskId = selectedTask.id;
     const taskTitle = selectedTask.title;
-
     try {
       mural.removeTaskFromState(taskId);
       setShowDeleteModal(false);
       setSelectedTask(null);
-
       await TaskService.delete(taskId);
       await HistoryService.logAction(mural.myNickname, "excluiu", taskTitle);
 
-      await NotificationService.notifyPartner(
-        "Tarefa Removida 🗑️",
-        `${mural.myNickname} excluiu: ${taskTitle}`,
-      );
-    } catch (error) {
-      console.log("Erro ao excluir:", error);
-    }
+      // 🚀 NOTIFICAÇÃO INTELIGENTE: Só avisa a Mel se ela estiver envolvida na tarefa excluída!
+      const isPartnerInvolved =
+        selectedTask.assignedToNickname === mural.partnerName ||
+        selectedTask.createdBy === mural.partnerName;
+      if (isPartnerInvolved) {
+        const pToken = await TaskService.getPartnerToken();
+        if (pToken)
+          await NotificationService.sendPushNotification(
+            pToken,
+            "Tarefa Removida 🗑️",
+            `${mural.myNickname} excluiu: ${taskTitle}`,
+          );
+      }
+    } catch (error) {}
   };
 
   const submitTask = async () => {
@@ -231,6 +220,8 @@ export default function MuralScreen() {
     }
     if (hasError) return;
 
+    const pName = mural.partnerName || "Parceiro(a)";
+
     if (editingId) {
       const updates = {
         title: newTask,
@@ -242,26 +233,26 @@ export default function MuralScreen() {
             ? mural.myNickname
             : assignedTo === "judge"
               ? "judge"
-              : (await TaskService.getPartnerNickname(mural.myNickname)) ||
-                "Parceiro",
+              : pName,
       };
-
       mural.updateTaskInState(editingId, updates);
       mural.toggleModal("new", false);
       resetForm();
-
       await TaskService.update(editingId, updates);
       await HistoryService.logAction(mural.myNickname, "editou", newTask);
 
-      const title =
-        assignedTo === "judge"
-          ? "👩‍⚖️ O Juiz foi acionado!"
-          : "Tarefa Atualizada ✏️";
-      await NotificationService.notifyPartner(
-        title,
-        `Tarefa alterada: ${newTask}`,
-      );
+      // 🚀 Só notifica se editar uma tarefa que era do parceiro
+      if (assignedTo !== "me") {
+        const pToken = await TaskService.getPartnerToken();
+        if (pToken)
+          await NotificationService.sendPushNotification(
+            pToken,
+            "Tarefa Atualizada ✏️",
+            `${mural.myNickname} alterou a tarefa: ${newTask}`,
+          );
+      }
     } else {
+      // O UseMural agora gerencia as notificações da criação e do Juiz!
       await mural.handleAddTask(
         {
           title: newTask,
@@ -272,30 +263,12 @@ export default function MuralScreen() {
         },
         resetForm,
       );
-
-      const title =
-        assignedTo === "judge" ? "👩‍⚖️ O Juiz foi acionado!" : "Nova Missão! 🥄";
-      await NotificationService.notifyPartner(title, `Nova tarefa: ${newTask}`);
     }
-  };
-
-  const handleTabPress = (tab: "pending" | "completed") => {
-    mural.setActiveTab(tab);
-    pagerRef.current?.scrollToIndex({
-      index: tab === "pending" ? 0 : 1,
-      animated: true,
-    });
-  };
-
-  const handleScroll = (event: any) => {
-    const index = Math.round(event.nativeEvent.contentOffset.x / windowWidth);
-    mural.setActiveTab(index === 0 ? "pending" : "completed");
   };
 
   const formatCompletedAt = (isoString?: string) => {
     if (!isoString) return "";
-    const date = new Date(isoString);
-    return date.toLocaleTimeString("pt-BR", {
+    return new Date(isoString).toLocaleTimeString("pt-BR", {
       hour: "2-digit",
       minute: "2-digit",
     });
@@ -305,7 +278,6 @@ export default function MuralScreen() {
     <View style={[styles.container, { backgroundColor: colors.bg }]}>
       <Stack.Screen options={{ headerShown: false }} />
       <StatusBar barStyle={isFemale ? "dark-content" : "light-content"} />
-
       {mural.showConfetti && (
         <View
           style={{
@@ -321,20 +293,18 @@ export default function MuralScreen() {
           <ConfettiCannon
             count={200}
             origin={{ x: -10, y: 0 }}
-            autoStart={true}
-            fadeOut={true}
+            autoStart
+            fadeOut
             onAnimationEnd={() => mural.setShowConfetti(false)}
             fallSpeed={3000}
           />
         </View>
       )}
-
       <View style={[styles.headerRow, { marginTop: insets.top }]}>
         <Text style={[styles.headerTitle, { color: colors.text }]}>
           Mural de Tarefas
         </Text>
       </View>
-
       <View
         style={[
           styles.tabContainer,
@@ -348,7 +318,7 @@ export default function MuralScreen() {
               styles.tabButton,
               mural.activeTab === tab && { backgroundColor: colors.primary },
             ]}
-            onPress={() => handleTabPress(tab)}
+            onPress={() => mural.setActiveTab(tab)}
           >
             <Text
               style={[
@@ -368,14 +338,18 @@ export default function MuralScreen() {
           </TouchableOpacity>
         ))}
       </View>
-
       <FlatList
-        ref={pagerRef}
         data={["pending", "completed"]}
         horizontal
         pagingEnabled
         showsHorizontalScrollIndicator={false}
-        onMomentumScrollEnd={handleScroll}
+        onMomentumScrollEnd={(e) =>
+          mural.setActiveTab(
+            Math.round(e.nativeEvent.contentOffset.x / windowWidth) === 0
+              ? "pending"
+              : "completed",
+          )
+        }
         keyExtractor={(item) => item}
         renderItem={({ item }) => (
           <View style={{ width: windowWidth, paddingHorizontal: 20 }}>
@@ -415,7 +389,6 @@ export default function MuralScreen() {
           </View>
         )}
       />
-
       {mural.activeTab === "pending" && (
         <TouchableOpacity
           style={[
@@ -518,40 +491,6 @@ export default function MuralScreen() {
             Cancelar
           </Text>
         </TouchableOpacity>
-      </GenericModal>
-
-      <GenericModal
-        visible={mural.modals.feedback}
-        onClose={() => mural.toggleModal("feedback", false)}
-        bg={colors.card}
-      >
-        <MaterialCommunityIcons
-          name={
-            mural.feedbackData.type === "error" ? "alert-circle" : "information"
-          }
-          size={50}
-          color={mural.feedbackData.type === "error" ? "#FF5252" : "#FFCA28"}
-          style={{ marginBottom: 15 }}
-        />
-        <Text style={[styles.modalTitle, { color: colors.text }]}>
-          {mural.feedbackData.title}
-        </Text>
-        <Text
-          style={{
-            color: colors.text,
-            textAlign: "center",
-            marginBottom: 20,
-            fontFamily: Fonts.regular,
-          }}
-        >
-          {mural.feedbackData.message}
-        </Text>
-        <BtnAction
-          label="OK"
-          color={colors.primary}
-          txtColor={isFemale ? colors.text : "#FFF"}
-          onPress={() => mural.toggleModal("feedback", false)}
-        />
       </GenericModal>
 
       <Modal
@@ -763,7 +702,6 @@ export default function MuralScreen() {
           </>
         )}
       </GenericModal>
-
       <GenericModal
         visible={mural.modals.congrats}
         onClose={() => mural.toggleModal("congrats", false)}
@@ -795,7 +733,39 @@ export default function MuralScreen() {
           onPress={() => mural.toggleModal("congrats", false)}
         />
       </GenericModal>
-
+      <GenericModal
+        visible={mural.modals.feedback}
+        onClose={() => mural.toggleModal("feedback", false)}
+        bg={colors.card}
+      >
+        <MaterialCommunityIcons
+          name={
+            mural.feedbackData.type === "error" ? "alert-circle" : "information"
+          }
+          size={50}
+          color={mural.feedbackData.type === "error" ? "#FF5252" : "#FFCA28"}
+          style={{ marginBottom: 15 }}
+        />
+        <Text style={[styles.modalTitle, { color: colors.text }]}>
+          {mural.feedbackData.title}
+        </Text>
+        <Text
+          style={{
+            color: colors.text,
+            textAlign: "center",
+            marginBottom: 20,
+            fontFamily: Fonts.regular,
+          }}
+        >
+          {mural.feedbackData.message}
+        </Text>
+        <BtnAction
+          label="OK"
+          color={colors.primary}
+          txtColor={isFemale ? colors.text : "#FFF"}
+          onPress={() => mural.toggleModal("feedback", false)}
+        />
+      </GenericModal>
       <GenericModal
         visible={mural.modals.finish}
         onClose={() => mural.toggleModal("finish", false)}
@@ -834,7 +804,6 @@ export default function MuralScreen() {
           </View>
         )}
       </GenericModal>
-
       <Modal
         animationType="fade"
         transparent={true}
@@ -909,7 +878,6 @@ const OptionBtn = ({ selected, label, color, theme, icon, onPress }: any) => (
     ) : null}
   </TouchableOpacity>
 );
-
 const GenericModal = ({ visible, onClose, bg, borderColor, children }: any) => (
   <Modal
     animationType="fade"
@@ -933,7 +901,6 @@ const GenericModal = ({ visible, onClose, bg, borderColor, children }: any) => (
     </View>
   </Modal>
 );
-
 const BtnAction = ({ label, color, txtColor, onPress }: any) => (
   <TouchableOpacity
     style={[styles.saveBtn, { backgroundColor: color, width: "100%" }]}
@@ -1043,12 +1010,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   saveBtn: { paddingVertical: 16, borderRadius: 15, alignItems: "center" },
-  optionBtn: {
-    padding: 15,
-    borderRadius: 12,
-    width: "100%",
-    alignItems: "center",
-  },
   optionMenuBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -1058,12 +1019,4 @@ const styles = StyleSheet.create({
     gap: 15,
   },
   optionMenuText: { fontSize: 16, fontFamily: Fonts.bold },
-  errorBox: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 15,
-    marginTop: -10,
-    gap: 5,
-  },
-  errorText: { color: "#FF5252", fontFamily: Fonts.bold, fontSize: 12 },
 });

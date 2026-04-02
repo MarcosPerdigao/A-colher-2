@@ -1,4 +1,10 @@
-import React, { useState, useCallback, useMemo, useRef } from "react";
+import React, {
+  useState,
+  useCallback,
+  useMemo,
+  useRef,
+  useEffect,
+} from "react";
 import {
   View,
   Text,
@@ -9,23 +15,25 @@ import {
   Alert,
   ActivityIndicator,
   Keyboard,
-  ScrollView, // <-- O ScrollView nativo voltou para a tela principal
+  ScrollView,
 } from "react-native";
 import { Stack, useFocusEffect } from "expo-router";
 import { MaterialCommunityIcons, AntDesign } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../../src/context/ThemeContext";
 import { Fonts } from "../../constants/theme";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import {
   BottomSheetModal,
   BottomSheetBackdrop,
-  BottomSheetScrollView, // <-- Usado APENAS dentro das gavetas
+  BottomSheetScrollView,
   BottomSheetTextInput,
 } from "@gorhom/bottom-sheet";
-
+import { FinanceService, Transaction } from "../../src/services/finance";
+import { TaskService } from "../../src/services/tasks";
+import { NotificationService } from "../../src/services/notifications";
 import { FinanceConfigModal } from "../../src/components/FinanceConfigModal";
-import { FinanceService } from "../../src/services/finance";
 
 const nomesMeses = [
   "Jan",
@@ -41,12 +49,10 @@ const nomesMeses = [
   "Nov",
   "Dez",
 ];
-
 const generateMonthsWindow = () => {
   const list = [];
   const date = new Date();
   date.setMonth(date.getMonth() - 2);
-
   for (let i = 0; i < 12; i++) {
     list.push(`${nomesMeses[date.getMonth()]}/${date.getFullYear()}`);
     date.setMonth(date.getMonth() + 1);
@@ -57,40 +63,41 @@ const generateMonthsWindow = () => {
 export default function FinanceiroScreen() {
   const { colors, isFemale } = useTheme();
   const insets = useSafeAreaInsets();
-
   const windowedMonths = useMemo(() => generateMonthsWindow(), []);
 
   const [selectedMonth, setSelectedMonth] = useState("");
-  const [gastos, setGastos] = useState<any[]>([]);
+  const [gastos, setGastos] = useState<Transaction[]>([]);
+  const [myNickname, setMyNickname] = useState("Eu");
+  const [partnerName, setPartnerName] = useState("Parceira(o)");
+  const [selectedItem, setSelectedItem] = useState<Transaction | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null); // Controle de Edição
 
-  const [selectedItem, setSelectedItem] = useState<any>(null);
-
+  const [isExpense, setIsExpense] = useState(true);
   const [movName, setMovName] = useState("");
   const [movAmount, setMovAmount] = useState("");
   const [movDate, setMovDate] = useState("");
   const [movType, setMovType] = useState<"fixo" | "variavel">("variavel");
+  const [paymentMethod, setPaymentMethod] = useState("");
   const [movCategory, setMovCategory] = useState("");
   const [expenseOwner, setExpenseOwner] = useState<"eu" | "parceiro">("eu");
-  const [isAddingNewCategory, setIsAddingNewCategory] = useState(false);
   const [customCategory, setCustomCategory] = useState("");
-
-  const categories = [
+  const [baseCategories, setBaseCategories] = useState([
     "Casa",
     "Mercado",
     "Transporte",
     "Saúde",
     "Lazer",
     "Outros",
-  ];
+    "Pets",
+  ]);
 
-  const [showFinanceModal, setShowFinanceModal] = useState(false);
   const [currentSettings, setCurrentSettings] = useState<any>(null);
-  const [loadingSettings, setLoadingSettings] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showFinanceModal, setShowFinanceModal] = useState(false);
 
   const formSheetRef = useRef<BottomSheetModal>(null);
   const optionsSheetRef = useRef<BottomSheetModal>(null);
-
-  const formSnapPoints = useMemo(() => ["85%", "95%"], []);
+  const formSnapPoints = useMemo(() => ["90%", "98%"], []);
   const optionsSnapPoints = useMemo(() => ["35%"], []);
 
   const renderBackdrop = useCallback(
@@ -108,100 +115,176 @@ export default function FinanceiroScreen() {
   useFocusEffect(
     useCallback(() => {
       const today = new Date();
-      const currentLabel = `${nomesMeses[today.getMonth()]}/${today.getFullYear()}`;
-      setSelectedMonth(currentLabel);
+      setSelectedMonth(
+        `${nomesMeses[today.getMonth()]}/${today.getFullYear()}`,
+      );
       loadFinanceSettings();
+      loadUserNames();
+      loadCustomCategories();
     }, []),
   );
 
+  useEffect(() => {
+    let unsubscribe: any;
+    const setupRealtime = async () => {
+      unsubscribe = await FinanceService.listen(setGastos);
+    };
+    setupRealtime();
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, []);
+
+  const loadUserNames = async () => {
+    const me = await AsyncStorage.getItem("@user_nickname");
+    if (me) setMyNickname(me);
+    const partner = await TaskService.getPartnerNickname();
+    if (partner) setPartnerName(partner);
+  };
+
+  const loadCustomCategories = async () => {
+    const custom = await FinanceService.getCustomCategories();
+    if (custom.length > 0)
+      setBaseCategories(Array.from(new Set([...baseCategories, ...custom])));
+  };
+
   const loadFinanceSettings = async () => {
     const settings = await FinanceService.getSettings();
-    if (settings) {
-      setCurrentSettings(settings);
-    }
+    if (settings) setCurrentSettings(settings);
   };
 
-  const handleOpenFinanceSettings = async () => {
-    setLoadingSettings(true);
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await loadUserNames();
+    await loadCustomCategories();
     await loadFinanceSettings();
-    setLoadingSettings(false);
-    setShowFinanceModal(true);
+    setTimeout(() => setIsRefreshing(false), 800);
   };
 
-  const handleSaveFinanceSettings = async () => {
-    await loadFinanceSettings();
-  };
+  const handleSave = async () => {
+    if (!movName || !movAmount)
+      return Alert.alert("Erro", "Preencha o nome e o valor.");
+    const valNumeric = parseFloat(movAmount.replace(/\D/g, "")) / 100;
 
-  const handleSave = () => {
-    if (!movName || !movAmount) {
-      Alert.alert("Erro", "Preencha o nome e o valor.");
-      return;
+    let finalCategory = "Renda Extra";
+    if (isExpense) {
+      finalCategory = movCategory;
+      if (customCategory.trim().length > 0) {
+        finalCategory = customCategory.trim();
+        await FinanceService.saveCustomCategory(finalCategory);
+        setBaseCategories((prev) => [...prev, finalCategory]);
+      }
     }
 
-    const ownerLabel = expenseOwner === "eu" ? "Minha" : "Parceira(o)";
-    const catLabel = isAddingNewCategory ? customCategory : movCategory;
+    const paidByLabel = expenseOwner === "eu" ? myNickname : partnerName;
 
-    const newItem = {
-      id: Math.random().toString(),
-      title: movName,
-      subtitle: `${ownerLabel} • ${movDate} • ${catLabel}`,
-      amount: `- ${movAmount}`,
-      icon: "cart-outline",
-      type: movType,
-      category: catLabel,
-      month: selectedMonth,
-      owner: expenseOwner,
-    };
+    try {
+      const payload: any = {
+        title: movName,
+        value: valNumeric,
+        type: isExpense ? "expense" : "income",
+        category: finalCategory,
+        date: movDate,
+        month: selectedMonth,
+        paidBy: paidByLabel,
+        paymentMethod: paymentMethod,
+        beneficiary: "couple",
+        isFixed: movType === "fixo",
+        split: "shared",
+      };
 
-    setGastos([newItem, ...gastos]);
+      if (editingId) {
+        await FinanceService.update(editingId, payload);
+      } else {
+        await FinanceService.add(payload);
+        const pToken = await TaskService.getPartnerToken();
+        if (pToken) {
+          const notifTitle = isExpense
+            ? "💸 Nova Despesa"
+            : "💰 Receita Extra!";
+          const notifBody = isExpense
+            ? `${myNickname} registrou um gasto de R$ ${valNumeric.toFixed(2)} em ${movName}.`
+            : `${myNickname} adicionou uma entrada de R$ ${valNumeric.toFixed(2)} (${movName}).`;
+          await NotificationService.sendPushNotification(
+            pToken,
+            notifTitle,
+            notifBody,
+          );
+        }
+      }
+    } catch (e) {
+      Alert.alert("Erro", "Não foi possível salvar.");
+    }
+
     Keyboard.dismiss();
     formSheetRef.current?.dismiss();
     resetForm();
   };
 
-  const handleDelete = () => {
-    setGastos(gastos.filter((item) => item.id !== selectedItem.id));
+  const handleEditOption = () => {
+    if (selectedItem) {
+      setMovName(selectedItem.title);
+      setMovAmount("R$ " + selectedItem.value.toFixed(2).replace(".", ","));
+      setMovDate(selectedItem.date);
+      setIsExpense(selectedItem.type === "expense");
+      setMovType(selectedItem.isFixed ? "fixo" : "variavel");
+      setPaymentMethod(selectedItem.paymentMethod || "");
+      if (selectedItem.type === "expense") {
+        if (baseCategories.includes(selectedItem.category)) {
+          setMovCategory(selectedItem.category);
+          setCustomCategory("");
+        } else {
+          setCustomCategory(selectedItem.category);
+          setMovCategory("");
+        }
+      }
+      setEditingId(selectedItem.id || null);
+      optionsSheetRef.current?.dismiss();
+      formSheetRef.current?.present();
+    }
+  };
+
+  const handleDelete = async () => {
+    if (selectedItem?.id) await FinanceService.delete(selectedItem.id);
     optionsSheetRef.current?.dismiss();
   };
 
   const handleCurrencyChange = (value: string) => {
     let numeric = value.replace(/\D/g, "");
-    if (numeric.length === 0) {
-      setMovAmount("");
-      return;
-    }
-    let floatVal = (parseInt(numeric) / 100).toFixed(2);
-    let formatted = floatVal
-      .replace(".", ",")
-      .replace(/(\d)(?=(\d{3})+(?!\d))/g, "$1.");
-    setMovAmount("R$ " + formatted);
+    if (numeric.length === 0) return setMovAmount("");
+    setMovAmount(
+      "R$ " +
+        (parseInt(numeric) / 100)
+          .toFixed(2)
+          .replace(".", ",")
+          .replace(/(\d)(?=(\d{3})+(?!\d))/g, "$1."),
+    );
   };
 
   const resetForm = () => {
+    setIsExpense(true);
     setMovName("");
     setMovAmount("");
     setMovDate(new Date().toLocaleDateString("pt-BR"));
     setMovType("variavel");
     setExpenseOwner("eu");
     setMovCategory("");
-    setIsAddingNewCategory(false);
     setCustomCategory("");
-  };
-
-  const openForm = () => {
-    resetForm();
-    formSheetRef.current?.present();
+    setPaymentMethod("");
+    setEditingId(null);
   };
 
   const listData = gastos.filter((i) => i.month === selectedMonth);
-  const titleColorOnPrimary = isFemale ? "#5D4037" : "#FFFFFF";
+  const totalDespesas = listData
+    .filter((i) => i.type === "expense")
+    .reduce((acc, curr) => acc + curr.value, 0);
+  const totalExtras = listData
+    .filter((i) => i.type === "income")
+    .reduce((acc, curr) => acc + curr.value, 0);
 
-  const displayIncome = currentSettings?.monthlyIncome
-    ? `R$ ${currentSettings.monthlyIncome
-        .toFixed(2)
-        .replace(".", ",")
-        .replace(/(\d)(?=(\d{3})+(?!\d))/g, "$1.")}`
-    : "R$ 0,00";
+  const baseIncome = currentSettings?.monthlyIncome || 0;
+  const saldoFinal = baseIncome + totalExtras - totalDespesas;
+  const titleColorOnPrimary = isFemale ? "#5D4037" : "#FFFFFF";
 
   return (
     <View style={[styles.container, { backgroundColor: colors.bg }]}>
@@ -245,7 +328,6 @@ export default function FinanceiroScreen() {
         />
       </View>
 
-      {/* AQUI ESTAVA O ERRO: Voltou a ser o ScrollView normal */}
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 130 }}
@@ -253,8 +335,7 @@ export default function FinanceiroScreen() {
         <View style={{ paddingHorizontal: 20, paddingTop: 10 }}>
           <TouchableOpacity
             style={[styles.balanceCard, { backgroundColor: colors.primary }]}
-            onPress={handleOpenFinanceSettings}
-            disabled={loadingSettings}
+            onPress={handleRefresh}
             activeOpacity={0.8}
           >
             <View
@@ -268,11 +349,9 @@ export default function FinanceiroScreen() {
                 <Text
                   style={[styles.balanceLabel, { color: titleColorOnPrimary }]}
                 >
-                  {currentSettings?.mode === "split"
-                    ? "Sua Renda Mensal"
-                    : "Renda Mensal"}
+                  Saldo Restante ({selectedMonth})
                 </Text>
-                {loadingSettings ? (
+                {isRefreshing ? (
                   <ActivityIndicator
                     color={titleColorOnPrimary}
                     size="small"
@@ -285,12 +364,38 @@ export default function FinanceiroScreen() {
                       { color: titleColorOnPrimary },
                     ]}
                   >
-                    {displayIncome}
+                    R${" "}
+                    {saldoFinal
+                      .toFixed(2)
+                      .replace(".", ",")
+                      .replace(/(\d)(?=(\d{3})+(?!\d))/g, "$1.")}
                   </Text>
                 )}
+                <View style={{ flexDirection: "row", gap: 10, marginTop: 10 }}>
+                  <Text
+                    style={{
+                      color: titleColorOnPrimary,
+                      fontSize: 11,
+                      fontFamily: Fonts.bold,
+                    }}
+                  >
+                    Base: R$ {baseIncome.toFixed(2)}
+                  </Text>
+                  {totalExtras > 0 && (
+                    <Text
+                      style={{
+                        color: colors.success,
+                        fontSize: 11,
+                        fontFamily: Fonts.bold,
+                      }}
+                    >
+                      + Extras: R$ {totalExtras.toFixed(2)}
+                    </Text>
+                  )}
+                </View>
               </View>
               <MaterialCommunityIcons
-                name="cog-outline"
+                name="refresh"
                 size={24}
                 color={titleColorOnPrimary}
                 style={{ opacity: 0.7 }}
@@ -306,7 +411,7 @@ export default function FinanceiroScreen() {
               { color: colors.text, marginBottom: 15 },
             ]}
           >
-            Despesas de {selectedMonth}
+            Movimentações
           </Text>
           {listData.length === 0 ? (
             <Text
@@ -317,45 +422,91 @@ export default function FinanceiroScreen() {
                 fontFamily: Fonts.regular,
               }}
             >
-              Nenhum gasto registrado este mês.
+              Nenhum registro este mês.
             </Text>
           ) : (
-            listData.map((item: any) => (
-              <TouchableOpacity
-                key={item.id}
-                style={[styles.itemCard, { backgroundColor: colors.card }]}
-                onPress={() => {
-                  setSelectedItem(item);
-                  optionsSheetRef.current?.present();
-                }}
-              >
-                <View style={styles.itemLeft}>
-                  <View
+            listData.map((item) => {
+              const displayPayer =
+                item.paidBy === myNickname ? "Eu" : item.paidBy;
+
+              return (
+                <TouchableOpacity
+                  key={item.id}
+                  style={[
+                    styles.itemCard,
+                    {
+                      backgroundColor: colors.card,
+                      borderLeftWidth: 4,
+                      borderLeftColor:
+                        item.type === "expense"
+                          ? colors.danger
+                          : colors.success,
+                    },
+                  ]}
+                  onLongPress={() => {
+                    setSelectedItem(item);
+                    optionsSheetRef.current?.present();
+                  }}
+                  delayLongPress={200}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.itemLeft}>
+                    <View
+                      style={[styles.iconWrap, { backgroundColor: colors.bg }]}
+                    >
+                      <MaterialCommunityIcons
+                        name={
+                          item.type === "expense" ? "cart-outline" : "cash-plus"
+                        }
+                        size={22}
+                        color={
+                          item.type === "expense"
+                            ? colors.danger
+                            : colors.success
+                        }
+                      />
+                    </View>
+                    <View style={styles.textWrap}>
+                      <Text style={[styles.itemTitle, { color: colors.text }]}>
+                        {item.title}
+                      </Text>
+                      <Text
+                        style={[styles.itemSubtitle, { color: colors.sub }]}
+                      >
+                        {displayPayer}{" "}
+                        {item.type === "expense" && `• ${item.category}`}
+                      </Text>
+                      {item.paymentMethod ? (
+                        <Text
+                          style={{
+                            fontSize: 10,
+                            color: colors.sub,
+                            marginTop: 2,
+                            fontFamily: Fonts.bold,
+                          }}
+                        >
+                          {item.paymentMethod}
+                        </Text>
+                      ) : null}
+                    </View>
+                  </View>
+                  <Text
                     style={[
-                      styles.iconWrap,
-                      { backgroundColor: isFemale ? colors.bg : "#263238" },
+                      styles.itemAmount,
+                      {
+                        color:
+                          item.type === "expense"
+                            ? colors.danger
+                            : colors.success,
+                      },
                     ]}
                   >
-                    <MaterialCommunityIcons
-                      name={item.icon}
-                      size={22}
-                      color={colors.primary}
-                    />
-                  </View>
-                  <View style={styles.textWrap}>
-                    <Text style={[styles.itemTitle, { color: colors.text }]}>
-                      {item.title}
-                    </Text>
-                    <Text style={[styles.itemSubtitle, { color: colors.sub }]}>
-                      {item.subtitle}
-                    </Text>
-                  </View>
-                </View>
-                <Text style={[styles.itemAmount, { color: colors.danger }]}>
-                  {item.amount}
-                </Text>
-              </TouchableOpacity>
-            ))
+                    {item.type === "expense" ? "- " : "+ "} R${" "}
+                    {item.value.toFixed(2).replace(".", ",")}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })
           )}
         </View>
       </ScrollView>
@@ -365,7 +516,10 @@ export default function FinanceiroScreen() {
           styles.fab,
           { backgroundColor: colors.primary, bottom: insets.bottom + 34 },
         ]}
-        onPress={openForm}
+        onPress={() => {
+          resetForm();
+          formSheetRef.current?.present();
+        }}
       >
         <AntDesign name="plus" size={28} color={titleColorOnPrimary} />
       </TouchableOpacity>
@@ -383,20 +537,64 @@ export default function FinanceiroScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={{
-            padding: 30,
+            padding: 25,
             paddingBottom: insets.bottom + 60,
           }}
         >
           <View style={styles.modalHeader}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>
-              Nova Despesa
+              {editingId ? "Editar Registro" : "Novo Registro"}
             </Text>
             <TouchableOpacity onPress={() => formSheetRef.current?.dismiss()}>
               <AntDesign name="close" size={24} color={colors.sub} />
             </TouchableOpacity>
           </View>
 
-          <Text style={styles.label}>Nome</Text>
+          <View
+            style={[
+              styles.optionsRow,
+              { backgroundColor: colors.bg, borderRadius: 12, padding: 5 },
+            ]}
+          >
+            <TouchableOpacity
+              onPress={() => setIsExpense(true)}
+              style={[
+                styles.typeBtn,
+                { borderWidth: 0 },
+                isExpense && { backgroundColor: colors.danger },
+              ]}
+            >
+              <Text
+                style={{
+                  color: isExpense ? "#FFF" : colors.sub,
+                  fontFamily: Fonts.bold,
+                }}
+              >
+                Despesa
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setIsExpense(false)}
+              style={[
+                styles.typeBtn,
+                { borderWidth: 0 },
+                !isExpense && { backgroundColor: colors.success },
+              ]}
+            >
+              <Text
+                style={{
+                  color: !isExpense ? "#FFF" : colors.sub,
+                  fontFamily: Fonts.bold,
+                }}
+              >
+                Dinheiro Extra
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.label}>
+            {isExpense ? "O que foi pago?" : "De onde veio esse dinheiro?"}
+          </Text>
           <BottomSheetTextInput
             style={[
               styles.input,
@@ -409,7 +607,9 @@ export default function FinanceiroScreen() {
             value={movName}
             onChangeText={setMovName}
             placeholderTextColor={colors.sub}
-            placeholder="Ex: Conta de Luz"
+            placeholder={
+              isExpense ? "Ex: Conta de Luz" : "Ex: Venda no Mercado Livre"
+            }
           />
 
           <View style={styles.row}>
@@ -432,7 +632,6 @@ export default function FinanceiroScreen() {
                 placeholder="R$ 0,00"
               />
             </View>
-
             <View style={{ flex: 1 }}>
               <Text style={styles.label}>Data</Text>
               <BottomSheetTextInput
@@ -454,168 +653,214 @@ export default function FinanceiroScreen() {
               />
             </View>
           </View>
-
           <View style={{ height: 20 }} />
 
-          <Text style={styles.label}>Quem Pagou?</Text>
-          <View style={styles.optionsRow}>
-            <TouchableOpacity
-              onPress={() => setExpenseOwner("eu")}
-              style={[
-                styles.typeBtn,
-                expenseOwner === "eu" && {
-                  backgroundColor: colors.accent,
-                  borderColor: colors.accent,
-                },
-              ]}
-            >
-              <Text
+          {/* SÓ MOSTRA CAMPOS AVANÇADOS SE FOR DESPESA */}
+          {isExpense && (
+            <>
+              <Text style={styles.label}>Forma de Pagamento (Opcional)</Text>
+              <View
                 style={{
-                  color: expenseOwner === "eu" ? "#FFF" : colors.sub,
-                  fontFamily: Fonts.bold,
+                  flexDirection: "row",
+                  flexWrap: "wrap",
+                  gap: 10,
+                  marginBottom: 20,
                 }}
               >
-                Eu
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => setExpenseOwner("parceiro")}
-              style={[
-                styles.typeBtn,
-                expenseOwner === "parceiro" && {
-                  backgroundColor: colors.primary,
-                  borderColor: colors.primary,
-                },
-              ]}
-            >
-              <Text
-                style={{
-                  color:
-                    expenseOwner === "parceiro"
-                      ? titleColorOnPrimary
-                      : colors.sub,
-                  fontFamily: Fonts.bold,
-                }}
-              >
-                Parceira(o)
-              </Text>
-            </TouchableOpacity>
-          </View>
+                {["Pix", "Crédito", "Débito", "Dinheiro"].map((pm) => (
+                  <TouchableOpacity
+                    key={pm}
+                    onPress={() => setPaymentMethod(pm)}
+                    style={[
+                      styles.catBtn,
+                      paymentMethod === pm && {
+                        backgroundColor: colors.primary,
+                        borderColor: colors.primary,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={{
+                        color:
+                          paymentMethod === pm
+                            ? titleColorOnPrimary
+                            : colors.sub,
+                        fontFamily: Fonts.bold,
+                        fontSize: 12,
+                      }}
+                    >
+                      {pm}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
 
-          <Text style={styles.label}>Tipo de Gasto</Text>
-          <View style={styles.optionsRow}>
-            <TouchableOpacity
-              onPress={() => setMovType("variavel")}
-              style={[
-                styles.typeBtn,
-                movType === "variavel" && {
-                  backgroundColor: colors.accent,
-                  borderColor: colors.accent,
-                },
-              ]}
-            >
-              <Text
-                style={{
-                  color: movType === "variavel" ? "#FFF" : colors.sub,
-                  fontFamily: Fonts.bold,
-                }}
-              >
-                Variável
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => setMovType("fixo")}
-              style={[
-                styles.typeBtn,
-                movType === "fixo" && {
-                  backgroundColor: colors.danger,
-                  borderColor: colors.danger,
-                },
-              ]}
-            >
-              <Text
-                style={{
-                  color: movType === "fixo" ? "#FFF" : colors.sub,
-                  fontFamily: Fonts.bold,
-                }}
-              >
-                Fixo
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          <Text style={styles.label}>Categoria</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={{ marginBottom: 20 }}
-          >
-            {categories.map((cat) => (
-              <TouchableOpacity
-                key={cat}
-                onPress={() => {
-                  setMovCategory(cat);
-                  setIsAddingNewCategory(false);
-                }}
-                style={[
-                  styles.catBtn,
-                  movCategory === cat && { backgroundColor: colors.primary },
-                ]}
-              >
-                <Text
-                  style={{
-                    color:
-                      movCategory === cat ? titleColorOnPrimary : colors.sub,
-                    fontFamily: Fonts.bold,
-                  }}
+              <Text style={styles.label}>Quem Pagou?</Text>
+              <View style={styles.optionsRow}>
+                <TouchableOpacity
+                  onPress={() => setExpenseOwner("eu")}
+                  style={[
+                    styles.typeBtn,
+                    expenseOwner === "eu" && {
+                      backgroundColor: colors.accent,
+                      borderColor: colors.accent,
+                    },
+                  ]}
                 >
-                  {cat}
-                </Text>
-              </TouchableOpacity>
-            ))}
-            <TouchableOpacity
-              onPress={() => setIsAddingNewCategory(true)}
-              style={[
-                styles.catBtn,
-                isAddingNewCategory && { backgroundColor: colors.accent },
-              ]}
-            >
-              <Text
-                style={{
-                  color: isAddingNewCategory ? "#FFF" : colors.sub,
-                  fontFamily: Fonts.bold,
-                }}
-              >
-                + Outra
-              </Text>
-            </TouchableOpacity>
-          </ScrollView>
+                  <Text
+                    style={{
+                      color: expenseOwner === "eu" ? "#FFF" : colors.sub,
+                      fontFamily: Fonts.bold,
+                    }}
+                  >
+                    Eu
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setExpenseOwner("parceiro")}
+                  style={[
+                    styles.typeBtn,
+                    expenseOwner === "parceiro" && {
+                      backgroundColor: colors.primary,
+                      borderColor: colors.primary,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={{
+                      color:
+                        expenseOwner === "parceiro"
+                          ? titleColorOnPrimary
+                          : colors.sub,
+                      fontFamily: Fonts.bold,
+                    }}
+                  >
+                    {partnerName}
+                  </Text>
+                </TouchableOpacity>
+              </View>
 
-          {isAddingNewCategory && (
-            <BottomSheetTextInput
-              style={[
-                styles.input,
-                {
-                  backgroundColor: colors.bg,
-                  color: colors.text,
-                  borderColor: colors.accent,
-                },
-              ]}
-              placeholderTextColor={colors.sub}
-              placeholder="Qual categoria?"
-              value={customCategory}
-              onChangeText={setCustomCategory}
-            />
+              <Text style={styles.label}>Tipo de Gasto</Text>
+              <View style={styles.optionsRow}>
+                <TouchableOpacity
+                  onPress={() => setMovType("variavel")}
+                  style={[
+                    styles.typeBtn,
+                    movType === "variavel" && {
+                      backgroundColor: colors.accent,
+                      borderColor: colors.accent,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={{
+                      color: movType === "variavel" ? "#FFF" : colors.sub,
+                      fontFamily: Fonts.bold,
+                    }}
+                  >
+                    Variável
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setMovType("fixo")}
+                  style={[
+                    styles.typeBtn,
+                    movType === "fixo" && {
+                      backgroundColor: colors.danger,
+                      borderColor: colors.danger,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={{
+                      color: movType === "fixo" ? "#FFF" : colors.sub,
+                      fontFamily: Fonts.bold,
+                    }}
+                  >
+                    Fixo
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text style={styles.label}>Categoria</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ paddingRight: 20 }}
+                style={{ marginBottom: 20 }}
+              >
+                {baseCategories.map((cat) => (
+                  <TouchableOpacity
+                    key={cat}
+                    onPress={() => {
+                      setMovCategory(cat);
+                      setCustomCategory("");
+                    }}
+                    style={[
+                      styles.catPill,
+                      movCategory === cat
+                        ? {
+                            backgroundColor: colors.primary,
+                            borderColor: colors.primary,
+                          }
+                        : {
+                            backgroundColor: colors.card,
+                            borderColor: colors.border,
+                          },
+                    ]}
+                  >
+                    <Text
+                      style={{
+                        color:
+                          movCategory === cat
+                            ? titleColorOnPrimary
+                            : colors.sub,
+                        fontFamily: Fonts.bold,
+                        fontSize: 13,
+                      }}
+                    >
+                      {cat}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              <Text style={styles.label}>Ou Crie uma Nova Categoria</Text>
+              <BottomSheetTextInput
+                style={[
+                  styles.input,
+                  {
+                    backgroundColor: colors.bg,
+                    color: colors.text,
+                    borderColor: colors.accent,
+                  },
+                ]}
+                placeholderTextColor={colors.sub}
+                placeholder="Ex: Assinaturas"
+                value={customCategory}
+                onChangeText={(t) => {
+                  setCustomCategory(t);
+                  setMovCategory("");
+                }}
+              />
+            </>
           )}
 
           <TouchableOpacity
-            style={[styles.saveBtn, { backgroundColor: colors.danger }]}
+            style={[
+              styles.saveBtn,
+              { backgroundColor: isExpense ? colors.danger : colors.success },
+            ]}
             onPress={handleSave}
           >
             <Text
               style={{ color: "#FFF", fontFamily: Fonts.bold, fontSize: 16 }}
             >
-              Salvar Despesa
+              {editingId
+                ? "Salvar Alterações"
+                : isExpense
+                  ? "Salvar Despesa"
+                  : "Salvar Receita"}
             </Text>
           </TouchableOpacity>
         </BottomSheetScrollView>
@@ -636,21 +881,15 @@ export default function FinanceiroScreen() {
               { color: colors.text, marginBottom: 20, textAlign: "center" },
             ]}
           >
-            O que deseja fazer?
+            Opções
           </Text>
-          <TouchableOpacity
-            style={styles.optionBtn}
-            onPress={() => {
-              optionsSheetRef.current?.dismiss();
-              formSheetRef.current?.present();
-              setMovName(selectedItem?.title);
-            }}
-          >
+
+          <TouchableOpacity style={styles.optionBtn} onPress={handleEditOption}>
             <AntDesign name="edit" size={20} color={colors.primary} />
             <Text
               style={{
                 color: colors.text,
-                marginLeft: 10,
+                marginLeft: 15,
                 fontSize: 16,
                 fontFamily: Fonts.semiBold,
               }}
@@ -658,6 +897,7 @@ export default function FinanceiroScreen() {
               Editar
             </Text>
           </TouchableOpacity>
+
           <TouchableOpacity
             style={[styles.optionBtn, { borderBottomWidth: 0 }]}
             onPress={handleDelete}
@@ -666,7 +906,7 @@ export default function FinanceiroScreen() {
             <Text
               style={{
                 color: colors.danger,
-                marginLeft: 10,
+                marginLeft: 15,
                 fontSize: 16,
                 fontFamily: Fonts.semiBold,
               }}
@@ -676,11 +916,10 @@ export default function FinanceiroScreen() {
           </TouchableOpacity>
         </View>
       </BottomSheetModal>
-
       <FinanceConfigModal
         visible={showFinanceModal}
         onClose={() => setShowFinanceModal(false)}
-        onSave={handleSaveFinanceSettings}
+        onSave={loadFinanceSettings}
         initialIncome={currentSettings?.monthlyIncome || 0}
         initialMode={currentSettings?.mode || "unified"}
       />
@@ -702,7 +941,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     opacity: 0.9,
   },
-  balanceValue: { fontSize: 30, fontFamily: Fonts.black },
+  balanceValue: { fontSize: 32, fontFamily: Fonts.black },
   sectionTitle: { fontSize: 18, fontFamily: Fonts.black },
   itemCard: {
     borderRadius: 18,
@@ -735,7 +974,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     elevation: 6,
   },
-
   modalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -771,9 +1009,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
     paddingVertical: 10,
     borderRadius: 12,
-    marginRight: 8,
     borderWidth: 1.5,
     borderColor: "#DDD",
+  },
+  catPill: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 25,
+    borderWidth: 1,
+    marginRight: 10,
   },
   saveBtn: {
     paddingVertical: 16,
@@ -786,6 +1030,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingVertical: 18,
     borderBottomWidth: 0.5,
-    borderBottomColor: "#EEE",
+    borderBottomColor: "rgba(0,0,0,0.05)",
   },
 });

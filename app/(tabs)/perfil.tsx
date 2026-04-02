@@ -28,9 +28,11 @@ import { doc, updateDoc, getFirestore } from "firebase/firestore";
 
 import { TaskService, Task, checkTaskStatus } from "../../src/services/tasks";
 import { AuthService } from "../../src/services/auth";
+import { FinanceService } from "../../src/services/finance"; // <-- NOVO
 import { CustomAlert } from "../../src/components/CustomAlert";
+import { FinanceConfigModal } from "../../src/components/FinanceConfigModal"; // <-- NOVO
 import { useTheme } from "../../src/context/ThemeContext";
-import { Fonts } from "../../constants/theme"; // <-- IMPORT DA FONTE AQUI
+import { Fonts } from "../../constants/theme";
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
@@ -44,13 +46,16 @@ export default function ProfileScreen() {
   const [coupleCode, setCoupleCode] = useState("");
   const [streak, setStreak] = useState("0");
   const [tasksCompleted, setTasksCompleted] = useState(0);
-
   const [tasksPendingCount, setTasksPendingCount] = useState(0);
   const [pendingList, setPendingList] = useState<Task[]>([]);
   const [showHistory, setShowHistory] = useState(false);
-
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [identityGender, setIdentityGender] = useState("masculino");
+
+  // NOVO: Configurações de Finanças movidas pra cá
+  const [showFinanceModal, setShowFinanceModal] = useState(false);
+  const [currentFinanceSettings, setCurrentFinanceSettings] =
+    useState<any>(null);
 
   const [alertConfig, setAlertConfig] = useState({
     visible: false,
@@ -58,7 +63,6 @@ export default function ProfileScreen() {
     message: "",
     type: "info" as any,
   });
-
   const showAlert = (
     title: string,
     message: string,
@@ -69,13 +73,18 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     loadProfileData();
+    loadFinanceSettings();
   }, []);
+
+  const loadFinanceSettings = async () => {
+    const settings = await FinanceService.getSettings();
+    if (settings) setCurrentFinanceSettings(settings);
+  };
 
   const loadProfileData = async () => {
     try {
       const auth = getAuth();
       const user = auth.currentUser;
-
       const name = await AsyncStorage.getItem("@user_nickname");
       const code = await AsyncStorage.getItem("@couple_code");
       const streakVal = await AsyncStorage.getItem("@task_streak");
@@ -91,21 +100,16 @@ export default function ProfileScreen() {
         const myCompleted = tasks.filter(
           (t) => t.completed && t.completedByNickname === name,
         ).length;
-
         const expiredTasks = tasks.filter((t) => {
           if (t.completed) return false;
-          const status = checkTaskStatus(t);
-          return status === "expired";
+          return checkTaskStatus(t) === "expired";
         });
-
         setTasksCompleted(myCompleted);
         setPendingList(expiredTasks);
         setTasksPendingCount(expiredTasks.length);
       });
-
       if (unsubscribe) setTimeout(() => unsubscribe(), 1000);
     } catch (e) {
-      console.log("Erro perfil", e);
     } finally {
       setLoading(false);
     }
@@ -119,10 +123,8 @@ export default function ProfileScreen() {
         aspect: [1, 1],
         quality: 0.5,
       });
-
-      if (!result.canceled && result.assets[0].uri) {
+      if (!result.canceled && result.assets[0].uri)
         uploadImage(result.assets[0].uri);
-      }
     } catch (error) {
       showAlert("Erro", "Não foi possível abrir a galeria.", "error");
     }
@@ -132,30 +134,23 @@ export default function ProfileScreen() {
     const auth = getAuth();
     const user = auth.currentUser;
     if (!user) return;
-
     setUploadingImage(true);
     try {
       const response = await fetch(uri);
       const blob = await response.blob();
-      const storage = getStorage();
       const storageRef = ref(
-        storage,
+        getStorage(),
         `profile_photos/${user.uid}_${Date.now()}.jpg`,
       );
-
       await uploadBytes(storageRef, blob);
       const downloadUrl = await getDownloadURL(storageRef);
-
       await updateProfile(user, { photoURL: downloadUrl });
-      const db = getFirestore();
-      await updateDoc(doc(db, "users", user.uid), {
+      await updateDoc(doc(getFirestore(), "users", user.uid), {
         photoURL: downloadUrl,
       });
-
       setProfileImage(downloadUrl);
       showAlert("Sucesso", "Foto de perfil atualizada!", "success");
     } catch (error: any) {
-      console.log(error);
       showAlert("Erro no Upload", "Verifique o Storage.", "error");
     } finally {
       setUploadingImage(false);
@@ -166,44 +161,16 @@ export default function ProfileScreen() {
     await Clipboard.setStringAsync(coupleCode);
     showAlert("Copiado! 📋", "Código na área de transferência.", "success");
   };
-
   const handleSwitchTheme = async () => {
     await toggleTheme();
     showAlert("Tema Alterado", `Visual alterado.`, "success");
   };
-
   const handleLogout = async () => {
     await AuthService.logout();
     router.replace("/");
   };
 
-  const renderPendingTask = ({ item }: { item: Task }) => (
-    <View
-      style={[
-        styles.historyItem,
-        {
-          borderLeftColor: "#D32F2F",
-          backgroundColor: "rgba(211, 47, 47, 0.05)",
-        },
-      ]}
-    >
-      <View style={{ flex: 1 }}>
-        <Text style={[styles.historyTitle, { color: colors.text }]}>
-          {item.title}
-        </Text>
-        <Text style={[styles.historyDate, { color: "#EF5350" }]}>
-          Venceu em: {item.date || "Data desconhecida"}
-        </Text>
-      </View>
-      <MaterialCommunityIcons
-        name="emoticon-sad-outline"
-        size={28}
-        color="#D32F2F"
-      />
-    </View>
-  );
-
-  if (loading) {
+  if (loading)
     return (
       <View
         style={[
@@ -218,7 +185,6 @@ export default function ProfileScreen() {
         <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
-  }
 
   return (
     <View
@@ -228,7 +194,6 @@ export default function ProfileScreen() {
       ]}
     >
       <StatusBar style={isFemale ? "dark" : "light"} />
-
       <CustomAlert
         visible={alertConfig.visible}
         title={alertConfig.title}
@@ -236,7 +201,6 @@ export default function ProfileScreen() {
         type={alertConfig.type}
         onClose={() => setAlertConfig((prev) => ({ ...prev, visible: false }))}
       />
-
       <View style={styles.header}>
         <Text style={[styles.title, { color: colors.text }]}>Meu Perfil</Text>
       </View>
@@ -271,9 +235,7 @@ export default function ProfileScreen() {
               <MaterialIcons name="edit" size={14} color="#FFF" />
             </View>
           </TouchableOpacity>
-
           <Text style={[styles.name, { color: colors.text }]}>{nickname}</Text>
-
           <TouchableOpacity
             style={styles.codeContainer}
             onPress={handleCopyCode}
@@ -299,20 +261,14 @@ export default function ProfileScreen() {
         <Text style={[styles.sectionTitle, { color: colors.sub }]}>
           ESTATÍSTICAS
         </Text>
-
         <View style={styles.statsRow}>
           <View style={[styles.statCard, { backgroundColor: colors.card }]}>
-            <MaterialIcons
-              name="local-fire-department"
-              size={28}
-              color="#FF5722"
-            />
+            <MaterialCommunityIcons name="trophy" size={28} color="#FFD700" />
             <Text style={[styles.statNumber, { color: colors.text }]}>
               {streak}
             </Text>
             <Text style={styles.statLabel}>Dias Seguidos</Text>
           </View>
-
           <View style={[styles.statCard, { backgroundColor: colors.card }]}>
             <MaterialCommunityIcons
               name="checkbox-marked-circle-outline"
@@ -324,7 +280,6 @@ export default function ProfileScreen() {
             </Text>
             <Text style={styles.statLabel}>Concluídas</Text>
           </View>
-
           <TouchableOpacity
             style={[styles.statCard, { backgroundColor: colors.card }]}
             onPress={() => setShowHistory(true)}
@@ -347,8 +302,36 @@ export default function ProfileScreen() {
           CONFIGURAÇÕES
         </Text>
 
+        {/* NOVO: BOTÃO DE CONFIGURAR FINANÇAS */}
         <TouchableOpacity
           style={[styles.optionButton, { backgroundColor: colors.card }]}
+          onPress={() => setShowFinanceModal(true)}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 15 }}>
+            <View
+              style={[
+                styles.iconBox,
+                { backgroundColor: isFemale ? "#E8F5E9" : "#37474F" },
+              ]}
+            >
+              <MaterialCommunityIcons
+                name="finance"
+                size={20}
+                color={isFemale ? "#4CAF50" : "#FFF"}
+              />
+            </View>
+            <Text style={[styles.optionText, { color: colors.text }]}>
+              Configurar Finanças
+            </Text>
+          </View>
+          <MaterialIcons name="chevron-right" size={24} color={colors.sub} />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.optionButton,
+            { backgroundColor: colors.card, marginTop: 10 },
+          ]}
           onPress={() => router.push("/vincular")}
         >
           <View style={{ flexDirection: "row", alignItems: "center", gap: 15 }}>
@@ -428,7 +411,6 @@ export default function ProfileScreen() {
         <TouchableOpacity style={[styles.logoutBtn]} onPress={handleLogout}>
           <Text style={styles.logoutText}>Sair do App</Text>
         </TouchableOpacity>
-
         <View style={styles.footerContainer}>
           <Text style={styles.copyrightText}>
             Desenvolvido com ❤️ por Marcos & Mel
@@ -459,19 +441,9 @@ export default function ProfileScreen() {
                 <AntDesign name="close" size={24} color={colors.sub} />
               </TouchableOpacity>
             </View>
-            <Text
-              style={{
-                color: colors.sub,
-                marginBottom: 15,
-                fontFamily: Fonts.regular,
-              }}
-            >
-              Estas tarefas contaram pontos negativos na gamificação:
-            </Text>
             <FlatList
               data={pendingList}
               keyExtractor={(item) => item.id}
-              renderItem={renderPendingTask}
               ListEmptyComponent={
                 <View style={{ padding: 20, alignItems: "center" }}>
                   <Text
@@ -481,10 +453,43 @@ export default function ProfileScreen() {
                   </Text>
                 </View>
               }
+              renderItem={({ item }) => (
+                <View
+                  style={[
+                    styles.historyItem,
+                    {
+                      borderLeftColor: "#D32F2F",
+                      backgroundColor: "rgba(211, 47, 47, 0.05)",
+                    },
+                  ]}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.historyTitle, { color: colors.text }]}>
+                      {item.title}
+                    </Text>
+                    <Text style={[styles.historyDate, { color: "#EF5350" }]}>
+                      Venceu em: {item.date || "Data desconhecida"}
+                    </Text>
+                  </View>
+                  <MaterialCommunityIcons
+                    name="emoticon-sad-outline"
+                    size={28}
+                    color="#D32F2F"
+                  />
+                </View>
+              )}
             />
           </View>
         </View>
       </Modal>
+
+      <FinanceConfigModal
+        visible={showFinanceModal}
+        onClose={() => setShowFinanceModal(false)}
+        onSave={loadFinanceSettings}
+        initialIncome={currentFinanceSettings?.monthlyIncome || 0}
+        initialMode={currentFinanceSettings?.mode || "unified"}
+      />
     </View>
   );
 }

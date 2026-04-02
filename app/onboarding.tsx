@@ -13,7 +13,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../src/context/ThemeContext";
-import { Fonts } from "../constants/theme"; // <-- IMPORT DA FONTE
+import { Fonts } from "../constants/theme";
 
 const { width } = Dimensions.get("window");
 
@@ -28,9 +28,9 @@ const SLIDES = [
   },
   {
     id: "2",
-    title: "Mural da Verdade",
+    title: "Mural em Tempo Real",
     description:
-      "Crie tarefas e defina quem faz. Se completou, tem que postar a foto! Sem foto, não conta.",
+      "Crie tarefas, delegue ou deixe o Juiz sortear. Tudo sincronizado no mesmo segundo para o casal.",
     icon: "clipboard-check-outline",
     color: "#2196F3",
   },
@@ -44,17 +44,24 @@ const SLIDES = [
   },
   {
     id: "4",
-    title: "Contas em Dia",
+    title: "Contas Transparentes",
     description:
-      "Lance o que você pagou. O app calcula sozinho quem deve para quem. O fim das planilhas chatas.",
+      "Cadastre despesas e receitas. O app calcula o saldo de vocês e cria categorias inteligentes.",
     icon: "piggy-bank",
     color: "#4CAF50",
   },
   {
     id: "5",
-    title: "Prontos?",
+    title: "Notificações na Hora",
     description:
-      "Conecte-se com seu parceiro(a) e comece a somar pontos na vida real!",
+      "O parceiro(a) recebe um aviso no celular assim que você delegar uma tarefa ou registrar um gasto.",
+    icon: "bell-ring-outline",
+    color: "#FF9800",
+  },
+  {
+    id: "6",
+    title: "Prontos?",
+    description: "Vincule o seu código e comecem a somar pontos na vida real!",
     icon: "heart-multiple",
     color: "#E91E63",
   },
@@ -64,69 +71,60 @@ export default function OnboardingScreen() {
   const { colors, isFemale } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-
   const [currentIndex, setCurrentIndex] = useState(0);
   const flatListRef = useRef<FlatList>(null);
 
   const handleFinish = async () => {
     await AsyncStorage.setItem("@app_has_seen_tutorial", "true");
-
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace("/");
-    }
+    if (router.canGoBack()) router.back();
+    else router.replace("/");
   };
 
   const handleNext = () => {
-    if (currentIndex < SLIDES.length - 1) {
+    if (currentIndex < SLIDES.length - 1)
       flatListRef.current?.scrollToIndex({
         index: currentIndex + 1,
         animated: true,
       });
-    } else {
-      handleFinish();
-    }
-  };
-
-  const renderItem = ({ item }: any) => {
-    return (
-      <View style={[styles.slide, { backgroundColor: colors.bg }]}>
-        <View
-          style={[styles.iconContainer, { backgroundColor: item.color + "20" }]}
-        >
-          <MaterialCommunityIcons
-            name={item.icon as any}
-            size={100}
-            color={item.color}
-          />
-        </View>
-        <Text style={[styles.title, { color: colors.text }]}>{item.title}</Text>
-        <Text style={[styles.description, { color: colors.sub }]}>
-          {item.description}
-        </Text>
-      </View>
-    );
+    else handleFinish();
   };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.bg }]}>
       <StatusBar barStyle={isFemale ? "dark-content" : "light-content"} />
-
       <FlatList
         ref={flatListRef}
         data={SLIDES}
-        renderItem={renderItem}
+        renderItem={({ item }: any) => (
+          <View style={[styles.slide, { backgroundColor: colors.bg }]}>
+            <View
+              style={[
+                styles.iconContainer,
+                { backgroundColor: item.color + "20" },
+              ]}
+            >
+              <MaterialCommunityIcons
+                name={item.icon as any}
+                size={100}
+                color={item.color}
+              />
+            </View>
+            <Text style={[styles.title, { color: colors.text }]}>
+              {item.title}
+            </Text>
+            <Text style={[styles.description, { color: colors.sub }]}>
+              {item.description}
+            </Text>
+          </View>
+        )}
         horizontal
         pagingEnabled
         showsHorizontalScrollIndicator={false}
         keyExtractor={(item) => item.id}
-        onMomentumScrollEnd={(e) => {
-          const index = Math.round(e.nativeEvent.contentOffset.x / width);
-          setCurrentIndex(index);
-        }}
+        onMomentumScrollEnd={(e) =>
+          setCurrentIndex(Math.round(e.nativeEvent.contentOffset.x / width))
+        }
       />
-
       <View style={styles.pagination}>
         {SLIDES.map((_, index) => (
           <View
@@ -142,13 +140,10 @@ export default function OnboardingScreen() {
           />
         ))}
       </View>
-
       <View
         style={[
           styles.footer,
-          {
-            paddingBottom: insets.bottom > 0 ? insets.bottom + 20 : 30,
-          },
+          { paddingBottom: insets.bottom > 0 ? insets.bottom + 20 : 30 },
         ]}
       >
         <TouchableOpacity
@@ -170,7 +165,6 @@ export default function OnboardingScreen() {
             style={{ marginLeft: 10 }}
           />
         </TouchableOpacity>
-
         {currentIndex < SLIDES.length - 1 && (
           <TouchableOpacity onPress={handleFinish} style={{ marginTop: 15 }}>
             <Text
@@ -220,13 +214,7 @@ const styles = StyleSheet.create({
     marginBottom: 30,
   },
   dot: { height: 8, borderRadius: 4, marginHorizontal: 4 },
-
-  footer: {
-    paddingHorizontal: 20,
-    alignItems: "center",
-    width: "100%",
-  },
-
+  footer: { paddingHorizontal: 20, alignItems: "center", width: "100%" },
   button: {
     flexDirection: "row",
     width: "100%",

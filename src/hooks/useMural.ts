@@ -13,7 +13,7 @@ export function useMural(sexo: string | string[] | undefined) {
   const isFemale = sexo === "feminino";
 
   const [tasks, setTasks] = useState<TaskWithPhoto[]>([]);
-  const [partnerName, setPartnerName] = useState("Parceiro");
+  const [partnerName, setPartnerName] = useState("Parceira(o)");
   const [myNickname, setMyNickname] = useState("");
 
   const [activeTab, setActiveTab] = useState<"pending" | "completed">(
@@ -43,7 +43,6 @@ export function useMural(sexo: string | string[] | undefined) {
     icon: string;
     color: string;
   } | null>(null);
-
   const [selectedTaskToFinish, setSelectedTaskToFinish] = useState<
     string | null
   >(null);
@@ -80,15 +79,7 @@ export function useMural(sexo: string | string[] | undefined) {
       const storedNickname = await AsyncStorage.getItem("@user_nickname");
       if (storedNickname) {
         setMyNickname(storedNickname);
-        try {
-          const token =
-            await NotificationService.registerForPushNotificationsAsync();
-          if (token) await TaskService.saveUserToken(token, storedNickname);
-        } catch (e) {
-          console.log("Erro push setup:", e);
-        }
-
-        const pNickname = await TaskService.getPartnerNickname(storedNickname);
+        const pNickname = await TaskService.getPartnerNickname();
         if (pNickname) setPartnerName(pNickname);
       }
     };
@@ -98,24 +89,15 @@ export function useMural(sexo: string | string[] | undefined) {
     };
   }, []);
 
-  const removeTaskFromState = (taskId: string) => {
+  const removeTaskFromState = (taskId: string) =>
     setTasks((currentTasks) => currentTasks.filter((t) => t.id !== taskId));
-  };
-
-  const updateTaskInState = (
-    taskId: string,
-    newData: Partial<TaskWithPhoto>,
-  ) => {
+  const updateTaskInState = (taskId: string, newData: Partial<TaskWithPhoto>) =>
     setTasks((currentTasks) =>
       currentTasks.map((t) => (t.id === taskId ? { ...t, ...newData } : t)),
     );
-  };
-
-  const toggleModal = (modal: keyof typeof modals, value: boolean) => {
+  const toggleModal = (modal: keyof typeof modals, value: boolean) =>
     setModals((prev) => ({ ...prev, [modal]: value }));
-  };
 
-  // Permite que o mural.tsx chame o modal de feedback
   const showFeedback = (
     title: string,
     message: string,
@@ -137,7 +119,6 @@ export function useMural(sexo: string | string[] | undefined) {
     resetForm: () => void,
   ) => {
     const { title, obs, date, priority, assignedTo } = taskData;
-
     let finalRecipient = assignedTo;
     let displayTitle = title;
     let assignedNickname =
@@ -151,7 +132,6 @@ export function useMural(sexo: string | string[] | undefined) {
       const isMe = Math.random() > 0.5;
       finalRecipient = isMe ? "me" : "partner";
       assignedNickname = isMe ? myNickname : partnerName;
-      displayTitle = title; // Limpo, sem [JUIZ] no texto
 
       if (isMe) {
         setJudgeResult({
@@ -180,13 +160,40 @@ export function useMural(sexo: string | string[] | undefined) {
       priority: priority,
       assignedToNickname: assignedNickname,
       createdAt: new Date().toISOString(),
-      // Se foi sorteio, o criador é "Juiz"
       createdBy: assignedTo === "judge" ? "Juiz" : myNickname,
     };
 
     await TaskService.add(newTaskObj);
     toggleModal("new", false);
     resetForm();
+
+    // 🚀 O CÉREBRO DA NOTIFICAÇÃO: Avalia o resultado final do Juiz e envia
+    const pToken = await TaskService.getPartnerToken();
+    if (pToken) {
+      if (assignedTo === "partner") {
+        await NotificationService.sendPushNotification(
+          pToken,
+          "Nova Missão! 🥄",
+          `${myNickname} designou uma tarefa para você: ${title}`,
+        );
+      } else if (assignedTo === "judge") {
+        if (finalRecipient === "me") {
+          // O juiz te ferrou. Avisamos a parceira que você se deu mal.
+          await NotificationService.sendPushNotification(
+            pToken,
+            "⚖️ O Juiz Decidiu!",
+            `A tarefa '${title}' sobrou para o(a) ${myNickname}!`,
+          );
+        } else {
+          // O juiz ferrou a parceira. Avisamos a ela que ela se deu mal.
+          await NotificationService.sendPushNotification(
+            pToken,
+            "⚖️ O Juiz te pegou!",
+            `Azar o seu! A tarefa '${title}' caiu para você.`,
+          );
+        }
+      }
+    }
   };
 
   const completeTask = async (localUri?: string) => {
@@ -213,10 +220,11 @@ export function useMural(sexo: string | string[] | undefined) {
       await TaskService.update(selectedTaskToFinish, updates);
       updateTaskInState(selectedTaskToFinish, updates);
 
-      const token = await TaskService.getPartnerToken(myNickname);
-      if (token)
+      // 🚀 Só avisa se você completou uma tarefa.
+      const pToken = await TaskService.getPartnerToken();
+      if (pToken)
         await NotificationService.sendPushNotification(
-          token,
+          pToken,
           "Tarefa Concluída! 🎉",
           `${myNickname} finalizou: ${task?.title}`,
         );
@@ -240,14 +248,11 @@ export function useMural(sexo: string | string[] | undefined) {
       const current =
         parseInt((await AsyncStorage.getItem("@task_streak")) || "0") + 1;
       await AsyncStorage.setItem("@task_streak", current.toString());
-      if (current % 3 === 0) {
+      if (current % 3 === 0)
         setTimeout(() => {
           setShowConfetti(true);
         }, 500);
-      }
-    } catch (e) {
-      console.log(e);
-    }
+    } catch (e) {}
   };
 
   const handleTaskPress = (item: TaskWithPhoto) => {
@@ -288,7 +293,7 @@ export function useMural(sexo: string | string[] | undefined) {
     modals,
     toggleModal,
     feedbackData,
-    showFeedback, // EXPORTANDO
+    showFeedback,
     judgeResult,
     showConfetti,
     setShowConfetti,

@@ -8,11 +8,11 @@ import {
   onSnapshot,
   setDoc,
   deleteDoc,
-  updateDoc,
   getDocs,
   getDoc,
 } from "firebase/firestore";
 import { getApp } from "firebase/app";
+import { getAuth } from "firebase/auth";
 import { ref, uploadBytes, getDownloadURL, getStorage } from "firebase/storage";
 
 export interface Task {
@@ -20,7 +20,7 @@ export interface Task {
   title: string;
   completed: boolean;
   createdAt: string;
-  createdBy?: string; // Quem criou (pode ser "Juiz")
+  createdBy?: string;
   observation?: string;
   date?: string;
   priority?: "high" | "medium" | "low";
@@ -32,26 +32,16 @@ export interface Task {
 
 const COUPLES_COLLECTION = "couples";
 
-const getDb = () => {
-  const app = getApp();
-  return getFirestore(app);
-};
-
-const getStorageInstance = () => {
-  const app = getApp();
-  return getStorage(app);
-};
-
-const getCoupleCode = async () => {
-  return await AsyncStorage.getItem("@couple_code");
-};
+const getDb = () => getFirestore(getApp());
+const getStorageInstance = () => getStorage(getApp());
+const getCoupleCode = async () => await AsyncStorage.getItem("@couple_code");
 
 export const checkTaskStatus = (task: Task): "normal" | "late" | "expired" => {
   if (task.completed) return "normal";
   if (!task.createdAt) return "normal";
-  const created = new Date(task.createdAt).getTime();
-  const now = new Date().getTime();
-  const diffHours = (now - created) / (1000 * 60 * 60);
+  const diffHours =
+    (new Date().getTime() - new Date(task.createdAt).getTime()) /
+    (1000 * 60 * 60);
   if (diffHours >= 26) return "expired";
   if (diffHours >= 24) return "late";
   return "normal";
@@ -64,108 +54,49 @@ export const TaskService = {
     try {
       const coupleCode = await getCoupleCode();
       if (!coupleCode) return null;
-
-      const db = getDb();
-      const tasksRef = collection(db, COUPLES_COLLECTION, coupleCode, "tasks");
-      const q = query(tasksRef);
-
-      const unsubscribe = onSnapshot(q, (snapshot) => {
+      const q = query(
+        collection(getDb(), COUPLES_COLLECTION, coupleCode, "tasks"),
+      );
+      return onSnapshot(q, (snapshot) => {
         const tasks: Task[] = [];
-        snapshot.forEach((doc) => {
-          const data = doc.data() as Omit<Task, "id">;
-          // GARANTE QUE O ID SEJA O DO ARQUIVO REAL
-          tasks.push({ ...data, id: doc.id });
-        });
-        tasks.sort((a, b) => {
-          if (a.completed === b.completed) return 0;
-          return a.completed ? 1 : -1;
-        });
+        snapshot.forEach((doc) =>
+          tasks.push({ ...(doc.data() as Omit<Task, "id">), id: doc.id }),
+        );
+        tasks.sort((a, b) =>
+          a.completed === b.completed ? 0 : a.completed ? 1 : -1,
+        );
         onUpdate(tasks);
       });
-      return unsubscribe;
     } catch (error) {
-      console.error("Erro ao iniciar listener:", error);
-      return null;
-    }
-  },
-
-  getToken: async (nickname: string) => {
-    try {
-      const coupleCode = await getCoupleCode();
-      if (!coupleCode) return null;
-      const db = getDb();
-      // O ID do documento na coleção 'tokens' é o nickname do usuário
-      const tokenRef = doc(
-        db,
-        COUPLES_COLLECTION,
-        coupleCode,
-        "tokens",
-        nickname,
-      );
-      const docSnap = await getDoc(tokenRef);
-
-      if (docSnap.exists()) {
-        return docSnap.data().token;
-      }
-      return null;
-    } catch (error) {
-      console.error("Erro ao pegar token específico:", error);
       return null;
     }
   },
 
   add: async (task: Task): Promise<void> => {
-    try {
-      const coupleCode = await getCoupleCode();
-      if (!coupleCode) return;
-      const db = getDb();
-      // Força o ID ser o timestamp gerado no app
-      const taskDocRef = doc(
-        db,
-        COUPLES_COLLECTION,
-        coupleCode,
-        "tasks",
-        task.id,
-      );
-
-      const taskWithTimestamp = {
-        ...task,
-        createdAt: new Date().toISOString(),
-      };
-
-      await setDoc(taskDocRef, taskWithTimestamp);
-    } catch (error) {
-      console.error("Erro ao salvar:", error);
-    }
+    const coupleCode = await getCoupleCode();
+    if (!coupleCode) return;
+    await setDoc(
+      doc(getDb(), COUPLES_COLLECTION, coupleCode, "tasks", task.id),
+      { ...task, createdAt: new Date().toISOString() },
+    );
   },
 
   delete: async (id: string): Promise<void> => {
-    try {
-      const coupleCode = await getCoupleCode();
-      if (!coupleCode) return;
-      const db = getDb();
-      if (!id) return;
-
-      const taskDocRef = doc(db, COUPLES_COLLECTION, coupleCode, "tasks", id);
-      await deleteDoc(taskDocRef);
-    } catch (error) {
-      console.error("Erro ao deletar:", error);
-    }
+    const coupleCode = await getCoupleCode();
+    if (id && coupleCode)
+      await deleteDoc(
+        doc(getDb(), COUPLES_COLLECTION, coupleCode, "tasks", id),
+      );
   },
 
   update: async (id: string, data: Partial<Task>): Promise<void> => {
-    try {
-      const coupleCode = await getCoupleCode();
-      if (!coupleCode) return;
-      const db = getDb();
-      const taskDocRef = doc(db, COUPLES_COLLECTION, coupleCode, "tasks", id);
-
-      // Use setDoc com merge para evitar erro de "No document to update"
-      await setDoc(taskDocRef, data, { merge: true });
-    } catch (error) {
-      console.error("Erro ao update:", error);
-      throw error;
-    }
+    const coupleCode = await getCoupleCode();
+    if (coupleCode)
+      await setDoc(
+        doc(getDb(), COUPLES_COLLECTION, coupleCode, "tasks", id),
+        data,
+        { merge: true },
+      );
   },
 
   uploadImage: async (uri: string): Promise<string | null> => {
@@ -174,24 +105,17 @@ export const TaskService = {
       if (!coupleCode) return null;
       const blob: any = await new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
-        xhr.onload = function () {
-          resolve(xhr.response);
-        };
-        xhr.onerror = function (e) {
-          reject(new TypeError("Falha na conversão da imagem"));
-        };
+        xhr.onload = () => resolve(xhr.response);
+        xhr.onerror = () => reject(new TypeError("Falha na conversão"));
         xhr.responseType = "blob";
         xhr.open("GET", uri, true);
         xhr.send(null);
       });
-      const filename = `evidence_${Date.now()}.jpg`;
-      const storage = getStorageInstance();
       const storageRef = ref(
-        storage,
-        `couples/${coupleCode}/tasks/${filename}`,
+        getStorageInstance(),
+        `couples/${coupleCode}/tasks/evidence_${Date.now()}.jpg`,
       );
       await uploadBytes(storageRef, blob);
-      // @ts-ignore
       blob.close();
       return await getDownloadURL(storageRef);
     } catch (error) {
@@ -199,69 +123,41 @@ export const TaskService = {
     }
   },
 
-  saveUserToken: async (token: string, nickname: string) => {
+  // 🚀 NOVA LÓGICA INFALÍVEL PARA BUSCAR O PARCEIRO REAL
+  getPartnerInfo: async () => {
     try {
-      const coupleCode = await getCoupleCode();
-      if (!coupleCode) return;
+      const user = getAuth().currentUser;
+      if (!user) return null;
       const db = getDb();
-      const tokenRef = doc(
-        db,
-        COUPLES_COLLECTION,
-        coupleCode,
-        "tokens",
-        nickname,
-      );
-      await setDoc(
-        tokenRef,
-        { token, updatedAt: new Date().toISOString() },
-        { merge: true },
-      );
-    } catch (error) {
-      console.error("Erro token:", error);
-    }
-  },
-
-  getPartnerNickname: async (myNickname: string) => {
-    try {
-      const coupleCode = await getCoupleCode();
+      const userDoc = await getDoc(doc(db, "users", user.uid));
+      const coupleCode = userDoc.data()?.coupleCode;
       if (!coupleCode) return null;
-      const db = getDb();
-      const tokensRef = collection(
-        db,
-        COUPLES_COLLECTION,
-        coupleCode,
-        "tokens",
-      );
-      const snapshot = await getDocs(tokensRef);
-      let partnerNickname = null;
-      snapshot.forEach((doc) => {
-        if (doc.id !== myNickname) partnerNickname = doc.id;
-      });
-      return partnerNickname;
-    } catch (error) {
+
+      const coupleDoc = await getDoc(doc(db, "couples", coupleCode));
+      const uids = coupleDoc.data()?.users || [];
+      const partnerUid = uids.find((id: string) => id !== user.uid);
+
+      if (!partnerUid) return null;
+      const partnerDoc = await getDoc(doc(db, "users", partnerUid));
+      return partnerDoc.exists() ? partnerDoc.data() : null;
+    } catch (e) {
       return null;
     }
   },
 
-  getPartnerToken: async (myNickname: string) => {
-    try {
-      const coupleCode = await getCoupleCode();
-      if (!coupleCode) return null;
-      const db = getDb();
-      const tokensRef = collection(
-        db,
-        COUPLES_COLLECTION,
-        coupleCode,
-        "tokens",
-      );
-      const snapshot = await getDocs(tokensRef);
-      let partnerToken = null;
-      snapshot.forEach((doc) => {
-        if (doc.id !== myNickname) partnerToken = doc.data().token;
-      });
-      return partnerToken;
-    } catch (error) {
-      return null;
-    }
+  getPartnerNickname: async () => {
+    const info = await TaskService.getPartnerInfo();
+    return info?.nickname || null;
+  },
+
+  getPartnerToken: async () => {
+    const info = await TaskService.getPartnerInfo();
+    return info?.pushToken || null; // Garante que pega o token real atrelado à conta
+  },
+
+  // Mantido para não quebrar compatibilidade
+  saveUserToken: async (token: string, nickname: string) => {},
+  getToken: async (nickname: string) => {
+    return null;
   },
 };

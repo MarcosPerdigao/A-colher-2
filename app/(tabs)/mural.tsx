@@ -14,6 +14,7 @@ import {
   Image,
   ActivityIndicator,
   Dimensions,
+  Keyboard,
 } from "react-native";
 import { Stack, useFocusEffect } from "expo-router";
 import {
@@ -48,7 +49,6 @@ export default function MuralScreen() {
   const { colors, isFemale } = useTheme();
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = Dimensions.get("window");
-  const pagerRef = useRef<FlatList>(null);
   const mural = useMural(isFemale ? "feminino" : "masculino");
 
   const [newTask, setNewTask] = useState("");
@@ -68,6 +68,9 @@ export default function MuralScreen() {
   const [errorPriority, setErrorPriority] = useState(false);
   const [myPhoto, setMyPhoto] = useState<string | null>(null);
   const [partnerPhoto, setPartnerPhoto] = useState<string | null>(null);
+
+  // 🚀 NOVO: Trava de Segurança contra duplo clique
+  const [isSaving, setIsSaving] = useState(false);
 
   const loadUserDataAndDates = async () => {
     try {
@@ -112,16 +115,19 @@ export default function MuralScreen() {
     setEditingId(null);
     setErrorTitle("");
     setErrorPriority(false);
+    setIsSaving(false);
   };
   const openNewTask = () => {
     resetForm();
     setTaskDate(new Date().toLocaleDateString("pt-BR"));
     mural.toggleModal("new", true);
   };
-  const handleLongPress = (task: Task) => {
+
+  const handleLongPress = useCallback((task: Task) => {
+    Keyboard.dismiss();
     setSelectedTask(task);
-    setShowOptions(true);
-  };
+    setTimeout(() => setShowOptions(true), 50);
+  }, []);
 
   const handleEditOption = async () => {
     if (!selectedTask) return;
@@ -134,17 +140,25 @@ export default function MuralScreen() {
       setShowOptions(false);
       return;
     }
-    setNewTask(selectedTask.title);
+
+    setNewTask(selectedTask.title || "");
     setNewObs(selectedTask.observation || "");
     setTaskDate(selectedTask.date || "");
-    setNewPriority(selectedTask.priority);
+    setNewPriority(selectedTask.priority || "medium");
+
     let assign = "partner";
     if (
       selectedTask.assignedToNickname === "me" ||
-      selectedTask.assignedToNickname === mural.myNickname
+      selectedTask.assignedToNickname === mural.myNickname ||
+      (selectedTask as any).assignedTo === "me"
     )
       assign = "me";
-    else if (selectedTask.assignedToNickname === "judge") assign = "judge";
+    else if (
+      selectedTask.assignedToNickname === "judge" ||
+      (selectedTask as any).assignedTo === "judge"
+    )
+      assign = "judge";
+
     setAssignedTo(assign as any);
     setEditingId(selectedTask.id);
     setShowOptions(false);
@@ -163,20 +177,23 @@ export default function MuralScreen() {
       setShowOptions(false);
       return;
     }
-    const isMyTask =
-      taskToDelete.assignedToNickname === "me" ||
-      taskToDelete.assignedToNickname === mural.myNickname;
-    const createdByPartner =
-      taskToDelete.createdBy && taskToDelete.createdBy !== mural.myNickname;
-    if (createdByPartner && isMyTask) {
-      mural.showFeedback(
-        "Sem Trapaça! 🚫",
-        "Tarefa dada pelo(a) seu(sua) parceiro(a). Só ele(a) pode tirar!",
-        "warning",
-      );
-      setShowOptions(false);
-      return;
+
+    if (taskToDelete.createdBy) {
+      const isMyTask =
+        taskToDelete.assignedToNickname === "me" ||
+        taskToDelete.assignedToNickname === mural.myNickname;
+      const createdByPartner = taskToDelete.createdBy !== mural.myNickname;
+      if (createdByPartner && isMyTask) {
+        mural.showFeedback(
+          "Sem Trapaça! 🚫",
+          "Tarefa dada pelo(a) parceiro(a). Só ele(a) pode tirar!",
+          "warning",
+        );
+        setShowOptions(false);
+        return;
+      }
     }
+
     setShowOptions(false);
     setShowDeleteModal(true);
   };
@@ -192,7 +209,6 @@ export default function MuralScreen() {
       await TaskService.delete(taskId);
       await HistoryService.logAction(mural.myNickname, "excluiu", taskTitle);
 
-      // 🚀 NOTIFICAÇÃO INTELIGENTE: Só avisa a Mel se ela estiver envolvida na tarefa excluída!
       const isPartnerInvolved =
         selectedTask.assignedToNickname === mural.partnerName ||
         selectedTask.createdBy === mural.partnerName;
@@ -209,6 +225,8 @@ export default function MuralScreen() {
   };
 
   const submitTask = async () => {
+    if (isSaving) return; // 🚀 BLOQUEIA DUPLO CLIQUE NA HORA
+
     let hasError = false;
     if (!newTask.trim()) {
       setErrorTitle("O que precisamos fazer?");
@@ -220,49 +238,54 @@ export default function MuralScreen() {
     }
     if (hasError) return;
 
+    setIsSaving(true); // 🚀 ATIVA O LOADING
     const pName = mural.partnerName || "Parceiro(a)";
 
-    if (editingId) {
-      const updates = {
-        title: newTask,
-        observation: newObs,
-        date: taskDate,
-        priority: newPriority,
-        assignedToNickname:
-          assignedTo === "me"
-            ? mural.myNickname
-            : assignedTo === "judge"
-              ? "judge"
-              : pName,
-      };
-      mural.updateTaskInState(editingId, updates);
-      mural.toggleModal("new", false);
-      resetForm();
-      await TaskService.update(editingId, updates);
-      await HistoryService.logAction(mural.myNickname, "editou", newTask);
-
-      // 🚀 Só notifica se editar uma tarefa que era do parceiro
-      if (assignedTo !== "me") {
-        const pToken = await TaskService.getPartnerToken();
-        if (pToken)
-          await NotificationService.sendPushNotification(
-            pToken,
-            "Tarefa Atualizada ✏️",
-            `${mural.myNickname} alterou a tarefa: ${newTask}`,
-          );
-      }
-    } else {
-      // O UseMural agora gerencia as notificações da criação e do Juiz!
-      await mural.handleAddTask(
-        {
+    try {
+      if (editingId) {
+        const updates = {
           title: newTask,
-          obs: newObs,
+          observation: newObs,
           date: taskDate,
-          priority: newPriority as any,
-          assignedTo: assignedTo,
-        },
-        resetForm,
-      );
+          priority: newPriority,
+          assignedToNickname:
+            assignedTo === "me"
+              ? mural.myNickname
+              : assignedTo === "judge"
+                ? "judge"
+                : pName,
+        };
+        mural.updateTaskInState(editingId, updates);
+        mural.toggleModal("new", false);
+        resetForm();
+        await TaskService.update(editingId, updates);
+        await HistoryService.logAction(mural.myNickname, "editou", newTask);
+
+        if (assignedTo !== "me") {
+          const pToken = await TaskService.getPartnerToken();
+          if (pToken)
+            await NotificationService.sendPushNotification(
+              pToken,
+              "Tarefa Atualizada ✏️",
+              `${mural.myNickname} alterou a tarefa: ${newTask}`,
+            );
+        }
+      } else {
+        await mural.handleAddTask(
+          {
+            title: newTask,
+            obs: newObs,
+            date: taskDate,
+            priority: newPriority as any,
+            assignedTo: assignedTo,
+          },
+          resetForm,
+        );
+      }
+    } catch (e) {
+      console.log(e);
+    } finally {
+      setIsSaving(false); // 🚀 LIBERA O BOTÃO
     }
   };
 
@@ -343,6 +366,7 @@ export default function MuralScreen() {
         horizontal
         pagingEnabled
         showsHorizontalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
         onMomentumScrollEnd={(e) =>
           mural.setActiveTab(
             Math.round(e.nativeEvent.contentOffset.x / windowWidth) === 0
@@ -357,9 +381,10 @@ export default function MuralScreen() {
               data={
                 item === "pending" ? mural.pendingTasks : mural.completedTasks
               }
-              keyExtractor={(t) => t.id}
+              keyExtractor={(t) => t.id || Math.random().toString()}
               contentContainerStyle={{ paddingBottom: 150 }}
               showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
               renderItem={({ item: task }) => (
                 <TaskCard
                   item={task}
@@ -522,7 +547,10 @@ export default function MuralScreen() {
                   <AntDesign name="close" size={24} color={colors.sub} />
                 </TouchableOpacity>
               </View>
-              <ScrollView showsVerticalScrollIndicator={false}>
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+              >
                 <Text style={[styles.label, { color: colors.sub }]}>
                   Descrição
                 </Text>
@@ -641,19 +669,27 @@ export default function MuralScreen() {
                     onPress={() => setNewPriority("high")}
                   />
                 </View>
+                {/* 🚀 BOTÃO COM FEEDBACK VISUAL DE LOADING */}
                 <TouchableOpacity
                   onPress={submitTask}
                   style={[styles.saveBtn, { backgroundColor: colors.primary }]}
+                  disabled={isSaving}
                 >
-                  <Text
-                    style={{
-                      color: isFemale ? colors.text : "#fff",
-                      fontFamily: Fonts.bold,
-                      fontSize: 16,
-                    }}
-                  >
-                    {editingId ? "Salvar Alterações" : "Lançar no Mural"}
-                  </Text>
+                  {isSaving ? (
+                    <ActivityIndicator
+                      color={isFemale ? colors.text : "#fff"}
+                    />
+                  ) : (
+                    <Text
+                      style={{
+                        color: isFemale ? colors.text : "#fff",
+                        fontFamily: Fonts.bold,
+                        fontSize: 16,
+                      }}
+                    >
+                      {editingId ? "Salvar Alterações" : "Lançar no Mural"}
+                    </Text>
+                  )}
                 </TouchableOpacity>
                 <View style={{ height: 30 }} />
               </ScrollView>

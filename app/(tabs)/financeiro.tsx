@@ -12,13 +12,18 @@ import {
   StyleSheet,
   StatusBar,
   FlatList,
-  Alert,
   ActivityIndicator,
   Keyboard,
   ScrollView,
+  Modal,
+  Alert,
 } from "react-native";
 import { Stack, useFocusEffect } from "expo-router";
-import { MaterialCommunityIcons, AntDesign } from "@expo/vector-icons";
+import {
+  MaterialCommunityIcons,
+  AntDesign,
+  MaterialIcons,
+} from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../../src/context/ThemeContext";
 import { Fonts } from "../../constants/theme";
@@ -33,7 +38,6 @@ import {
 import { FinanceService, Transaction } from "../../src/services/finance";
 import { TaskService } from "../../src/services/tasks";
 import { NotificationService } from "../../src/services/notifications";
-import { FinanceConfigModal } from "../../src/components/FinanceConfigModal";
 
 const nomesMeses = [
   "Jan",
@@ -60,6 +64,21 @@ const generateMonthsWindow = () => {
   return list;
 };
 
+const GenericModal = ({ visible, onClose, bg, children }: any) => (
+  <Modal
+    animationType="fade"
+    transparent={true}
+    visible={visible}
+    onRequestClose={onClose}
+  >
+    <View style={styles.modalOverlayCenter}>
+      <View style={[styles.modalAlert, { backgroundColor: bg }]}>
+        {children}
+      </View>
+    </View>
+  </Modal>
+);
+
 export default function FinanceiroScreen() {
   const { colors, isFemale } = useTheme();
   const insets = useSafeAreaInsets();
@@ -71,6 +90,10 @@ export default function FinanceiroScreen() {
   const [partnerName, setPartnerName] = useState("Parceira(o)");
   const [selectedItem, setSelectedItem] = useState<Transaction | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  const [showOptionsModal, setShowOptionsModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const [isExpense, setIsExpense] = useState(true);
   const [movName, setMovName] = useState("");
@@ -93,12 +116,13 @@ export default function FinanceiroScreen() {
 
   const [currentSettings, setCurrentSettings] = useState<any>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [showFinanceModal, setShowFinanceModal] = useState(false);
+
+  // 🚀 O CADEADO SÍNCRONO CONTRA DUPLO CLIQUE
+  const isSavingRef = useRef(false);
+  const [isSavingUI, setIsSavingUI] = useState(false);
 
   const formSheetRef = useRef<BottomSheetModal>(null);
-  const optionsSheetRef = useRef<BottomSheetModal>(null);
   const formSnapPoints = useMemo(() => ["90%", "98%"], []);
-  const optionsSnapPoints = useMemo(() => ["35%"], []);
 
   const renderBackdrop = useCallback(
     (props: any) => (
@@ -162,8 +186,17 @@ export default function FinanceiroScreen() {
   };
 
   const handleSave = async () => {
-    if (!movName || !movAmount)
-      return Alert.alert("Erro", "Preencha o nome e o valor.");
+    // 1. O Cadeado bloqueia instantaneamente qualquer segundo clique
+    if (isSavingRef.current) return;
+    isSavingRef.current = true;
+    setIsSavingUI(true);
+
+    if (!movName || !movAmount) {
+      isSavingRef.current = false;
+      setIsSavingUI(false);
+      return;
+    }
+
     const valNumeric = parseFloat(movAmount.replace(/\D/g, "")) / 100;
 
     let finalCategory = "Renda Extra";
@@ -212,64 +245,76 @@ export default function FinanceiroScreen() {
           );
         }
       }
-    } catch (e) {
-      Alert.alert("Erro", "Não foi possível salvar.");
-    }
 
+      Keyboard.dismiss();
+      formSheetRef.current?.dismiss();
+      resetForm();
+    } catch (e) {
+      console.log(e);
+    } finally {
+      // 2. Só libera o botão novamente meio segundo depois (tempo da gaveta fechar)
+      setTimeout(() => {
+        isSavingRef.current = false;
+        setIsSavingUI(false);
+      }, 500);
+    }
+  };
+
+  const handleOpenOptions = (item: Transaction) => {
     Keyboard.dismiss();
-    formSheetRef.current?.dismiss();
-    resetForm();
+    setSelectedItem(item);
+    setShowOptionsModal(true);
   };
 
   const handleEditOption = () => {
-    if (selectedItem) {
-      setMovName(selectedItem.title);
-      setMovAmount("R$ " + selectedItem.value.toFixed(2).replace(".", ","));
-      setMovDate(selectedItem.date);
-      setIsExpense(selectedItem.type === "expense");
-      setMovType(selectedItem.isFixed ? "fixo" : "variavel");
-      setPaymentMethod(selectedItem.paymentMethod || "");
-      if (selectedItem.type === "expense") {
-        if (baseCategories.includes(selectedItem.category)) {
-          setMovCategory(selectedItem.category);
-          setCustomCategory("");
-        } else {
-          setCustomCategory(selectedItem.category);
-          setMovCategory("");
-        }
+    if (!selectedItem) return;
+
+    setMovName(selectedItem.title || "");
+    const safeValue = Number(selectedItem.value) || 0;
+    setMovAmount("R$ " + safeValue.toFixed(2).replace(".", ","));
+
+    setMovDate(selectedItem.date || new Date().toLocaleDateString("pt-BR"));
+    setIsExpense(selectedItem.type !== "income");
+    setMovType(selectedItem.isFixed ? "fixo" : "variavel");
+    setPaymentMethod(selectedItem.paymentMethod || "");
+
+    if (selectedItem.type !== "income") {
+      const cat = selectedItem.category || "";
+      if (baseCategories.includes(cat)) {
+        setMovCategory(cat);
+        setCustomCategory("");
+      } else {
+        setCustomCategory(cat);
+        setMovCategory("");
       }
-      setEditingId(selectedItem.id || null);
-      optionsSheetRef.current?.dismiss();
-      formSheetRef.current?.present();
     }
+    setEditingId(selectedItem.id || null);
+
+    setShowOptionsModal(false);
+    setTimeout(() => {
+      formSheetRef.current?.present();
+    }, 150);
   };
 
-  // 🚀 LÓGICA DE EXCLUSÃO CORRIGIDA E COM ALERTA DE SEGURANÇA
-  const handleDelete = () => {
-    if (!selectedItem?.id) return;
+  const openDeleteConfirm = () => {
+    setShowOptionsModal(false);
+    setTimeout(() => {
+      setShowDeleteModal(true);
+    }, 100);
+  };
 
-    Alert.alert(
-      "Excluir Registro",
-      `Deseja mesmo apagar "${selectedItem.title}"?`,
-      [
-        { text: "Cancelar", style: "cancel" },
-        {
-          text: "Sim, Excluir",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await FinanceService.delete(selectedItem.id!);
-              optionsSheetRef.current?.dismiss();
-            } catch (error) {
-              Alert.alert(
-                "Erro",
-                "Não foi possível excluir. Verifique sua internet.",
-              );
-            }
-          },
-        },
-      ],
-    );
+  const confirmDelete = async () => {
+    if (!selectedItem?.id) return;
+    setIsDeleting(true);
+    try {
+      await FinanceService.delete(selectedItem.id);
+      setShowDeleteModal(false);
+      setSelectedItem(null);
+    } catch (error) {
+      console.log(error);
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const handleCurrencyChange = (value: string) => {
@@ -300,10 +345,10 @@ export default function FinanceiroScreen() {
   const listData = gastos.filter((i) => i.month === selectedMonth);
   const totalDespesas = listData
     .filter((i) => i.type === "expense")
-    .reduce((acc, curr) => acc + curr.value, 0);
+    .reduce((acc, curr) => acc + (Number(curr.value) || 0), 0);
   const totalExtras = listData
     .filter((i) => i.type === "income")
-    .reduce((acc, curr) => acc + curr.value, 0);
+    .reduce((acc, curr) => acc + (Number(curr.value) || 0), 0);
 
   const baseIncome = currentSettings?.monthlyIncome || 0;
   const saldoFinal = baseIncome + totalExtras - totalDespesas;
@@ -353,6 +398,7 @@ export default function FinanceiroScreen() {
 
       <ScrollView
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ paddingBottom: 130 }}
       >
         <View style={{ paddingHorizontal: 20, paddingTop: 10 }}>
@@ -454,7 +500,7 @@ export default function FinanceiroScreen() {
 
               return (
                 <TouchableOpacity
-                  key={item.id}
+                  key={item.id || Math.random().toString()}
                   style={[
                     styles.itemCard,
                     {
@@ -466,15 +512,8 @@ export default function FinanceiroScreen() {
                           : colors.success,
                     },
                   ]}
-                  onPress={() => {
-                    setSelectedItem(item);
-                    optionsSheetRef.current?.present();
-                  }}
-                  onLongPress={() => {
-                    setSelectedItem(item);
-                    optionsSheetRef.current?.present();
-                  }}
-                  activeOpacity={0.7}
+                  onPress={() => handleOpenOptions(item)}
+                  activeOpacity={0.4}
                 >
                   <View style={styles.itemLeft}>
                     <View
@@ -528,7 +567,7 @@ export default function FinanceiroScreen() {
                     ]}
                   >
                     {item.type === "expense" ? "- " : "+ "} R${" "}
-                    {item.value.toFixed(2).replace(".", ",")}
+                    {(Number(item.value) || 0).toFixed(2).replace(".", ",")}
                   </Text>
                 </TouchableOpacity>
               );
@@ -568,7 +607,7 @@ export default function FinanceiroScreen() {
           }}
         >
           <View style={styles.modalHeader}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>
+            <Text style={[styles.bottomSheetTitle, { color: colors.text }]}>
               {editingId ? "Editar Registro" : "Novo Registro"}
             </Text>
             <TouchableOpacity onPress={() => formSheetRef.current?.dismiss()}>
@@ -877,77 +916,130 @@ export default function FinanceiroScreen() {
               { backgroundColor: isExpense ? colors.danger : colors.success },
             ]}
             onPress={handleSave}
+            disabled={isSavingUI}
           >
-            <Text
-              style={{ color: "#FFF", fontFamily: Fonts.bold, fontSize: 16 }}
-            >
-              {editingId
-                ? "Salvar Alterações"
-                : isExpense
-                  ? "Salvar Despesa"
-                  : "Salvar Receita"}
-            </Text>
+            {isSavingUI ? (
+              <ActivityIndicator color="#FFF" />
+            ) : (
+              <Text
+                style={{ color: "#FFF", fontFamily: Fonts.bold, fontSize: 16 }}
+              >
+                {editingId
+                  ? "Salvar Alterações"
+                  : isExpense
+                    ? "Salvar Despesa"
+                    : "Salvar Receita"}
+              </Text>
+            )}
           </TouchableOpacity>
         </BottomSheetScrollView>
       </BottomSheetModal>
 
-      <BottomSheetModal
-        ref={optionsSheetRef}
-        index={0}
-        snapPoints={optionsSnapPoints}
-        backdropComponent={renderBackdrop}
-        backgroundStyle={{ backgroundColor: colors.card }}
-        handleIndicatorStyle={{ backgroundColor: colors.sub }}
+      <GenericModal
+        visible={showOptionsModal}
+        onClose={() => setShowOptionsModal(false)}
+        bg={colors.card}
       >
-        <View style={{ padding: 25 }}>
-          <Text
-            style={[
-              styles.modalTitle,
-              { color: colors.text, marginBottom: 20, textAlign: "center" },
-            ]}
-          >
-            Opções
+        <Text
+          style={[
+            styles.customModalTitle,
+            { color: colors.text, marginBottom: 20 },
+          ]}
+        >
+          O que deseja fazer?
+        </Text>
+
+        <TouchableOpacity
+          style={[styles.optionMenuBtn, { backgroundColor: colors.bg }]}
+          onPress={handleEditOption}
+        >
+          <MaterialIcons name="edit" size={24} color={colors.primary} />
+          <Text style={[styles.optionMenuText, { color: colors.text }]}>
+            Editar Registro
           </Text>
+        </TouchableOpacity>
 
-          <TouchableOpacity style={styles.optionBtn} onPress={handleEditOption}>
-            <AntDesign name="edit" size={20} color={colors.primary} />
-            <Text
-              style={{
-                color: colors.text,
-                marginLeft: 15,
-                fontSize: 16,
-                fontFamily: Fonts.semiBold,
-              }}
-            >
-              Editar
-            </Text>
-          </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.optionMenuBtn,
+            { backgroundColor: colors.bg, marginTop: 10 },
+          ]}
+          onPress={openDeleteConfirm}
+        >
+          <MaterialIcons name="delete" size={24} color="#FF5252" />
+          <Text style={[styles.optionMenuText, { color: "#FF5252" }]}>
+            Excluir Registro
+          </Text>
+        </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.optionBtn, { borderBottomWidth: 0 }]}
-            onPress={handleDelete}
-          >
-            <AntDesign name="delete" size={20} color={colors.danger} />
-            <Text
-              style={{
-                color: colors.danger,
-                marginLeft: 15,
-                fontSize: 16,
-                fontFamily: Fonts.semiBold,
-              }}
-            >
-              Excluir
+        <TouchableOpacity
+          onPress={() => setShowOptionsModal(false)}
+          style={{ marginTop: 20 }}
+        >
+          <Text style={{ color: colors.sub, fontFamily: Fonts.regular }}>
+            Cancelar
+          </Text>
+        </TouchableOpacity>
+      </GenericModal>
+
+      <GenericModal
+        visible={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        bg={colors.card}
+      >
+        <MaterialCommunityIcons
+          name="trash-can-outline"
+          size={50}
+          color="#FF5252"
+          style={{ marginBottom: 10 }}
+        />
+        <Text
+          style={[
+            styles.customModalTitle,
+            { color: "#FF5252", marginBottom: 5 },
+          ]}
+        >
+          Excluir Registro?
+        </Text>
+        <Text
+          style={{
+            color: colors.text,
+            textAlign: "center",
+            marginBottom: 20,
+            fontFamily: Fonts.regular,
+          }}
+        >
+          Tem certeza que deseja apagar "{selectedItem?.title}"? Esta ação não
+          pode ser desfeita.
+        </Text>
+
+        <TouchableOpacity
+          style={[
+            styles.saveBtn,
+            { backgroundColor: "#FF5252", width: "100%", marginBottom: 10 },
+          ]}
+          onPress={confirmDelete}
+          disabled={isDeleting}
+        >
+          {isDeleting ? (
+            <ActivityIndicator color="#FFF" />
+          ) : (
+            <Text style={{ color: "#FFF", fontFamily: Fonts.bold }}>
+              Sim, Excluir
             </Text>
-          </TouchableOpacity>
-        </View>
-      </BottomSheetModal>
-      <FinanceConfigModal
-        visible={showFinanceModal}
-        onClose={() => setShowFinanceModal(false)}
-        onSave={loadFinanceSettings}
-        initialIncome={currentSettings?.monthlyIncome || 0}
-        initialMode={currentSettings?.mode || "unified"}
-      />
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => setShowDeleteModal(false)}
+          style={{ padding: 10 }}
+          disabled={isDeleting}
+        >
+          <Text style={{ color: colors.text, fontFamily: Fonts.regular }}>
+            Cancelar
+          </Text>
+        </TouchableOpacity>
+      </GenericModal>
     </View>
   );
 }
@@ -1004,7 +1096,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: 20,
   },
-  modalTitle: { fontSize: 20, fontFamily: Fonts.black },
+  bottomSheetTitle: { fontSize: 20, fontFamily: Fonts.black },
   label: {
     fontSize: 11,
     fontFamily: Fonts.bold,
@@ -1050,11 +1142,27 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 10,
   },
-  optionBtn: {
+  modalOverlayCenter: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.6)",
+    padding: 20,
+  },
+  modalAlert: {
+    width: "90%",
+    padding: 25,
+    borderRadius: 25,
+    alignItems: "center",
+  },
+  customModalTitle: { fontSize: 22, fontFamily: Fonts.black },
+  optionMenuBtn: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 18,
-    borderBottomWidth: 0.5,
-    borderBottomColor: "rgba(0,0,0,0.05)",
+    padding: 20,
+    borderRadius: 15,
+    width: "100%",
+    gap: 15,
   },
+  optionMenuText: { fontSize: 16, fontFamily: Fonts.bold },
 });

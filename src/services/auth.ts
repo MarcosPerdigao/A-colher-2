@@ -92,7 +92,7 @@ export const AuthService = {
     mode: "create" | "join",
     birthDate: string,
     anniversaryDate: string,
-    relationshipStatus: "namorando" | "casados" // <--- 1. O 8º PARÂMETRO ADICIONADO AQUI!
+    relationshipStatus: "namorando" | "casados", // <--- 1. O 8º PARÂMETRO ADICIONADO AQUI!
   ) => {
     // 1. Salva dados do Usuário
     await setDoc(
@@ -121,10 +121,23 @@ export const AuthService = {
         anniversaryDate: anniversaryDate,
         createdBy: uid,
       });
-    } else {
-      await updateDoc(coupleRef, {
-        users: arrayUnion(uid),
-      });
+    } else if (mode === "join") {
+      // 🚀 NOVA VALIDAÇÃO AQUI
+      if (coupleSnap.exists()) {
+        const coupleData = coupleSnap.data();
+
+        // Verifica se o casal já tem 2 pessoas (evita trisais não intencionais)
+        if (coupleData.users && coupleData.users.length >= 2) {
+          throw new Error("Este código de casal já está lotado.");
+        }
+
+        await updateDoc(coupleRef, {
+          users: arrayUnion(uid),
+        });
+      } else {
+        // Bloqueia se o código digitado não existir no banco
+        throw new Error("Código de casal inválido ou não encontrado.");
+      }
     }
 
     // 3. Salva Localmente

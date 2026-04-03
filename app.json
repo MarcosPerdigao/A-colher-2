@@ -2,7 +2,7 @@
   "expo": {
     "name": "A Colher",
     "slug": "a-colher",
-    "owner": "marcosperdigao",   
+    "owner": "marcosperdigao",
     "version": "1.0.2",
     "scheme": "acolher",
     "orientation": "portrait",
@@ -42,7 +42,8 @@
           "icon": "./assets/images/icon.png",
           "color": "#ffffff"
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker"
     ],
     "extra": {
       "router": {},

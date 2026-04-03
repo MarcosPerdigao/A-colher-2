@@ -27,6 +27,9 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import ConfettiCannon from "react-native-confetti-cannon";
 
+// 🚀 IMPORTAÇÃO DO CALENDÁRIO
+import DateTimePicker from "@react-native-community/datetimepicker";
+
 import { useMural } from "../../src/hooks/useMural";
 import TaskCard from "../../src/components/TaskCard";
 import { TaskService, Task } from "../../src/services/tasks";
@@ -69,7 +72,11 @@ export default function MuralScreen() {
   const [myPhoto, setMyPhoto] = useState<string | null>(null);
   const [partnerPhoto, setPartnerPhoto] = useState<string | null>(null);
 
-  // 🚀 NOVO: Trava de Segurança contra duplo clique
+  // 🚀 ESTADOS DO CALENDÁRIO
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [dateObj, setDateObj] = useState(new Date());
+
+  // Trava de Segurança contra duplo clique
   const [isSaving, setIsSaving] = useState(false);
 
   const loadUserDataAndDates = async () => {
@@ -106,6 +113,19 @@ export default function MuralScreen() {
     }, []),
   );
 
+  // 🚀 LÓGICA DO CALENDÁRIO
+  const onChangeDate = (event: any, selectedDate?: Date) => {
+    if (Platform.OS === "android") {
+      setShowDatePicker(false);
+    }
+    if (event.type === "set" && selectedDate) {
+      setDateObj(selectedDate);
+      setTaskDate(selectedDate.toLocaleDateString("pt-BR"));
+    } else {
+      setShowDatePicker(false);
+    }
+  };
+
   const resetForm = () => {
     setNewTask("");
     setNewObs("");
@@ -117,9 +137,12 @@ export default function MuralScreen() {
     setErrorPriority(false);
     setIsSaving(false);
   };
+
   const openNewTask = () => {
     resetForm();
-    setTaskDate(new Date().toLocaleDateString("pt-BR"));
+    const today = new Date();
+    setDateObj(today); // Seta o objeto data para hoje
+    setTaskDate(today.toLocaleDateString("pt-BR"));
     mural.toggleModal("new", true);
   };
 
@@ -146,6 +169,21 @@ export default function MuralScreen() {
     setTaskDate(selectedTask.date || "");
     setNewPriority(selectedTask.priority || "medium");
 
+    // 🚀 LÓGICA PARA CONVERTER "DD/MM/AAAA" DE VOLTA PARA OBJETO DATA (CALENDÁRIO)
+    if (selectedTask.date) {
+      const parts = selectedTask.date.split("/");
+      if (parts.length === 3) {
+        // Formato Date: ano, mes (0-11), dia
+        setDateObj(
+          new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0])),
+        );
+      } else {
+        setDateObj(new Date());
+      }
+    } else {
+      setDateObj(new Date());
+    }
+
     let assign = "partner";
     if (
       selectedTask.assignedToNickname === "me" ||
@@ -160,7 +198,7 @@ export default function MuralScreen() {
       assign = "judge";
 
     setAssignedTo(assign as any);
-    setEditingId(selectedTask.id);
+    setEditingId(selectedTask.id || null);
     setShowOptions(false);
     mural.toggleModal("new", true);
   };
@@ -225,7 +263,7 @@ export default function MuralScreen() {
   };
 
   const submitTask = async () => {
-    if (isSaving) return; // 🚀 BLOQUEIA DUPLO CLIQUE NA HORA
+    if (isSaving) return;
 
     let hasError = false;
     if (!newTask.trim()) {
@@ -238,7 +276,7 @@ export default function MuralScreen() {
     }
     if (hasError) return;
 
-    setIsSaving(true); // 🚀 ATIVA O LOADING
+    setIsSaving(true);
     const pName = mural.partnerName || "Parceiro(a)";
 
     try {
@@ -285,7 +323,7 @@ export default function MuralScreen() {
     } catch (e) {
       console.log(e);
     } finally {
-      setIsSaving(false); // 🚀 LIBERA O BOTÃO
+      setIsSaving(false);
     }
   };
 
@@ -600,21 +638,37 @@ export default function MuralScreen() {
                     onPress={() => setAssignedTo("judge")}
                   />
                 </View>
+
+                {/* 🚀 BOTÃO QUE ABRE O CALENDÁRIO */}
                 <Text style={[styles.label, { color: colors.sub }]}>Data</Text>
-                <TextInput
+                <TouchableOpacity
                   style={[
                     styles.input,
                     {
                       backgroundColor: colors.bg,
-                      color: colors.text,
                       borderColor: colors.border,
+                      justifyContent: "center",
                     },
                   ]}
-                  value={taskDate}
-                  onChangeText={setTaskDate}
-                  keyboardType="numeric"
-                  maxLength={10}
-                />
+                  onPress={() => setShowDatePicker(true)}
+                >
+                  <Text
+                    style={{ color: colors.text, fontFamily: Fonts.regular }}
+                  >
+                    {taskDate || "Selecionar data"}
+                  </Text>
+                </TouchableOpacity>
+
+                {/* 🚀 RENDERIZADOR DO CALENDÁRIO NATIVO */}
+                {showDatePicker && (
+                  <DateTimePicker
+                    value={dateObj}
+                    mode="date"
+                    display="default"
+                    onChange={onChangeDate}
+                  />
+                )}
+
                 <Text style={[styles.label, { color: colors.sub }]}>
                   Detalhes
                 </Text>
@@ -669,7 +723,6 @@ export default function MuralScreen() {
                     onPress={() => setNewPriority("high")}
                   />
                 </View>
-                {/* 🚀 BOTÃO COM FEEDBACK VISUAL DE LOADING */}
                 <TouchableOpacity
                   onPress={submitTask}
                   style={[styles.saveBtn, { backgroundColor: colors.primary }]}

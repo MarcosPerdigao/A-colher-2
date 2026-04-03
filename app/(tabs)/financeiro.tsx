@@ -230,20 +230,26 @@ export default function FinanceiroScreen() {
         await FinanceService.update(editingId, payload);
       } else {
         await FinanceService.add(payload);
-        const pToken = await TaskService.getPartnerToken();
-        if (pToken) {
-          const notifTitle = isExpense
-            ? "💸 Nova Despesa"
-            : "💰 Receita Extra!";
-          const notifBody = isExpense
-            ? `${myNickname} registrou um gasto de R$ ${valNumeric.toFixed(2)} em ${movName}.`
-            : `${myNickname} adicionou uma entrada de R$ ${valNumeric.toFixed(2)} (${movName}).`;
-          await NotificationService.sendPushNotification(
-            pToken,
-            notifTitle,
-            notifBody,
-          );
-        }
+
+        // Dispara a notificação em SEGUNDO PLANO, sem o 'await' antes da função!
+        TaskService.getPartnerToken()
+          .then((pToken) => {
+            if (pToken) {
+              const notifTitle = isExpense
+                ? "💸 Nova Despesa"
+                : "💰 Receita Extra!";
+              const notifBody = isExpense
+                ? `${myNickname} registrou um gasto de R$ ${valNumeric.toFixed(2)} em ${movName}.`
+                : `${myNickname} adicionou uma entrada de R$ ${valNumeric.toFixed(2)} (${movName}).`;
+
+              NotificationService.sendPushNotification(
+                pToken,
+                notifTitle,
+                notifBody,
+              );
+            }
+          })
+          .catch(console.error);
       }
 
       Keyboard.dismiss();
@@ -252,7 +258,6 @@ export default function FinanceiroScreen() {
     } catch (e) {
       console.log(e);
     } finally {
-      // 2. Só libera o botão novamente meio segundo depois (tempo da gaveta fechar)
       setTimeout(() => {
         isSavingRef.current = false;
         setIsSavingUI(false);
@@ -305,15 +310,15 @@ export default function FinanceiroScreen() {
 
   const confirmDelete = async () => {
     if (!selectedItem?.id) return;
-    setIsDeleting(true);
-    try {
-      await FinanceService.delete(selectedItem.id);
-      setShowDeleteModal(false);
-      setSelectedItem(null);
+
+     const idToExclude = selectedItem.id;
+    setShowDeleteModal(false);
+    setSelectedItem(null);
+
+     try {
+      await FinanceService.delete(idToExclude);
     } catch (error) {
-      console.log(error);
-    } finally {
-      setIsDeleting(false);
+      console.log("Erro ao deletar:", error);
     }
   };
 

@@ -178,7 +178,7 @@ export const AuthService = {
         return { users: userIds, names };
       }
       return null;
-    } catch (error) {
+    } catch {
       return null;
     }
   },

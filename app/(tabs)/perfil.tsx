@@ -109,7 +109,7 @@ export default function ProfileScreen() {
         setTasksPendingCount(expiredTasks.length);
       });
       if (unsubscribe) setTimeout(() => unsubscribe(), 1000);
-    } catch (e) {
+    } catch {
     } finally {
       setLoading(false);
     }
@@ -125,7 +125,7 @@ export default function ProfileScreen() {
       });
       if (!result.canceled && result.assets[0].uri)
         uploadImage(result.assets[0].uri);
-    } catch (error) {
+    } catch {
       showAlert("Erro", "Não foi possível abrir a galeria.", "error");
     }
   };
@@ -150,7 +150,7 @@ export default function ProfileScreen() {
       });
       setProfileImage(downloadUrl);
       showAlert("Sucesso", "Foto de perfil atualizada!", "success");
-    } catch (error: any) {
+    } catch {
       showAlert("Erro no Upload", "Verifique o Storage.", "error");
     } finally {
       setUploadingImage(false);

@@ -16,7 +16,6 @@ import {
   Keyboard,
   ScrollView,
   Modal,
-  Alert,
 } from "react-native";
 import { Stack, useFocusEffect } from "expo-router";
 import {
@@ -93,7 +92,6 @@ export default function FinanceiroScreen() {
 
   const [showOptionsModal, setShowOptionsModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
 
   const [isExpense, setIsExpense] = useState(true);
   const [movName, setMovName] = useState("");
@@ -149,13 +147,17 @@ export default function FinanceiroScreen() {
   );
 
   useEffect(() => {
-    let unsubscribe: any;
+    let unsubscribe: (() => void) | undefined;
+    let isMounted = true;
     const setupRealtime = async () => {
-      unsubscribe = await FinanceService.listen(setGastos);
+      const stopListening = await FinanceService.listen(setGastos);
+      if (!isMounted) stopListening?.();
+      else unsubscribe = stopListening;
     };
     setupRealtime();
     return () => {
-      if (unsubscribe) unsubscribe();
+      isMounted = false;
+      unsubscribe?.();
     };
   }, []);
 
@@ -1014,7 +1016,7 @@ export default function FinanceiroScreen() {
             fontFamily: Fonts.regular,
           }}
         >
-          Tem certeza que deseja apagar "{selectedItem?.title}"? Esta ação não
+          Tem certeza que deseja apagar &quot;{selectedItem?.title}&quot;? Esta ação não
           pode ser desfeita.
         </Text>
 
@@ -1024,21 +1026,15 @@ export default function FinanceiroScreen() {
             { backgroundColor: "#FF5252", width: "100%", marginBottom: 10 },
           ]}
           onPress={confirmDelete}
-          disabled={isDeleting}
         >
-          {isDeleting ? (
-            <ActivityIndicator color="#FFF" />
-          ) : (
-            <Text style={{ color: "#FFF", fontFamily: Fonts.bold }}>
-              Sim, Excluir
-            </Text>
-          )}
+          <Text style={{ color: "#FFF", fontFamily: Fonts.bold }}>
+            Sim, Excluir
+          </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           onPress={() => setShowDeleteModal(false)}
           style={{ padding: 10 }}
-          disabled={isDeleting}
         >
           <Text style={{ color: colors.text, fontFamily: Fonts.regular }}>
             Cancelar

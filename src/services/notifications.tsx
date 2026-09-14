@@ -68,14 +68,6 @@ export const NotificationService = {
     }
   },
 
-  notifyPartner: async (title: string, message: string) => {
-    try {
-      await Notifications.scheduleNotificationAsync({
-        content: { title, body: message, sound: true },
-        trigger: null,
-      });
-    } catch (error) {}
-  },
 };
 
 export const agendarLembretesAniversario = async (

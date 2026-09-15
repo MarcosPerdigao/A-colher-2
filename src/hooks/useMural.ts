@@ -234,7 +234,7 @@ export function useMural(sexo: string | string[] | undefined) {
         toggleModal("congrats", true);
         checkStreak();
       }
-    } catch (error) {
+    } catch {
       showFeedback("Erro", "Falha ao concluir tarefa.", "error");
     } finally {
       setUploading(false);
@@ -252,7 +252,9 @@ export function useMural(sexo: string | string[] | undefined) {
         setTimeout(() => {
           setShowConfetti(true);
         }, 500);
-    } catch (e) {}
+    } catch (error) {
+      console.error("Erro ao atualizar sequência de tarefas:", error);
+    }
   };
 
   const handleTaskPress = (item: TaskWithPhoto) => {

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from "react";
+import React, { useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -104,7 +104,9 @@ export default function MuralScreen() {
           }
         });
       }
-    } catch (e) {}
+    } catch (error) {
+      console.error("Erro ao carregar fotos do casal:", error);
+    }
   };
 
   useFocusEffect(
@@ -259,7 +261,10 @@ export default function MuralScreen() {
             `${mural.myNickname} excluiu: ${taskTitle}`,
           );
       }
-    } catch (error) {}
+    } catch (error) {
+      console.error("Erro ao excluir tarefa:", error);
+      mural.showFeedback("Erro", "Não foi possível excluir a tarefa.", "error");
+    }
   };
 
   const submitTask = async () => {
@@ -533,7 +538,7 @@ export default function MuralScreen() {
             fontFamily: Fonts.regular,
           }}
         >
-          Tem certeza que deseja apagar "{selectedTask?.title}"?
+          Tem certeza que deseja apagar &quot;{selectedTask?.title}&quot;?
         </Text>
         <TouchableOpacity
           style={[

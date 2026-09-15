@@ -1,6 +1,5 @@
 import React from "react";
 import { Tabs } from "expo-router";
-import { Platform } from "react-native";
 // Importando os ícones (com o Porquinho e as versões Outline/Filled)
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context"; // <--- IMPORTANTE

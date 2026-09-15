@@ -3,7 +3,7 @@
     "name": "A Colher",
     "slug": "a-colher",
     "owner": "marcosperdigao",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "scheme": "acolher",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",

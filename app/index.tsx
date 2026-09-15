@@ -253,7 +253,7 @@ export default function LoginScreen() {
         if (!coupleRef.exists()) throw new Error("Código não encontrado!");
         const coupleData = coupleRef.data();
 
-        if (coupleData?.partners && coupleData.partners.includes(user.uid)) {
+        if (coupleData?.users && coupleData.users.includes(user.uid)) {
           setLoading(false);
           return showAlert(
             "Eita!",
@@ -262,7 +262,7 @@ export default function LoginScreen() {
           );
         }
 
-        if (coupleData?.partners && coupleData.partners.length >= 2) {
+        if (coupleData?.users && coupleData.users.length >= 2) {
           setLoading(false);
           return showAlert(
             "Lotado",

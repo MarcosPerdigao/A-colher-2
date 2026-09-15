@@ -16,7 +16,6 @@ import { StatusBar } from "expo-status-bar";
 import {
   MaterialCommunityIcons,
   Ionicons,
-  FontAwesome5,
 } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
 import {
@@ -117,7 +116,7 @@ export default function VincularScreen() {
               const user = AuthService.getCurrentUser();
               if (user) await AuthService.leaveCouple(user.uid, myCode);
               router.replace("/");
-            } catch (e) {
+            } catch {
               showAlert("Erro", "Não foi possível sair.");
             } finally {
               setLoading(false);

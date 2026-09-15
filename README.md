@@ -1,76 +1,22 @@
-# 🥄 A Colher (Meter a Colher)
+# A Colher
 
-> **Organize a vida a dois sem tretas.** > O app definitivo para casais que querem dividir tarefas, resolver impasses e gamificar a convivência.
+Aplicativo para casais feito com React Native, Expo Router, TypeScript e Firebase.
 
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![React Native](https://img.shields.io/badge/React_Native-0.76-61DAFB.svg?logo=react)
-![Expo](https://img.shields.io/badge/Expo-Router-black.svg?logo=expo)
-![Firebase](https://img.shields.io/badge/Firebase-Firestore-FFCA28.svg?logo=firebase)
-![TypeScript](https://img.shields.io/badge/TypeScript-5.0-3178C6.svg?logo=typescript)
+O fluxo atual usa cadastro, login e recuperação de senha por e-mail. Depois do cadastro, a pessoa cria um código de casal ou entra com o código do parceiro. O app inclui Mural de tarefas, Juiz, histórico de ações, notificações, Financeiro e Perfil.
 
----
+## Preparação
 
-## 📖 Sobre o Projeto
+1. Instale as dependências com `npm ci`.
+2. Configure as variáveis públicas do projeto Expo: `EXPO_PUBLIC_API_KEY`, `EXPO_PUBLIC_AUTH_DOMAIN`, `EXPO_PUBLIC_PROJECT_ID`, `EXPO_PUBLIC_STORAGE_BUCKET`, `EXPO_PUBLIC_MESSAGING_SENDER_ID`, `EXPO_PUBLIC_APP_ID` e, se aplicável, `EXPO_PUBLIC_MEASUREMENT_ID`. O código lê essas variáveis em `firebaseConfig.ts`. Não coloque credenciais de administração do Firebase em variáveis `EXPO_PUBLIC_`.
+3. Para build Android, forneça o `google-services.json` do projeto Firebase indicado por `app.json`. Confirme a configuração de credenciais e variáveis no EAS antes de gerar uma build.
+4. Inicie com `npm start`. Para uma build de desenvolvimento, use o perfil `development` de `eas.json`.
 
-**A Colher** é um aplicativo mobile desenvolvido para ajudar casais a gerenciarem as responsabilidades domésticas de forma leve e divertida. 
+## Verificações
 
-Chega de discussões sobre quem vai lavar a louça! Com o recurso **"O Juiz"**, o app decide por vocês. Além disso, o **Mural da Discórdia** permite listar, priorizar e concluir tarefas, mantendo tudo sincronizado em tempo real entre os parceiros.
+- `npx tsc --noEmit`
+- `npm run lint`
+- `npx expo export --platform web` verifica o bundle web quando as dependências e variáveis necessárias estiverem disponíveis.
 
-## ✨ Funcionalidades Principais
+As rotas atuais ficam em `app/`: `index`, `onboarding`, `vincular` e as abas `mural`, `financeiro` e `perfil`. A lógica compartilhada fica em `src/services`, `src/hooks`, `src/context` e `src/components`.
 
-* 🔐 **Login & Autenticação:** Acesso seguro (Integração Google).
-* ❤️ **Sincronização de Casal:** Sistema inteligente de vinculação via **Código Único (#A1B2)**. Um cria, o outro entra, e o app conecta os dois magicamente.
-* 📝 **Mural da Discórdia:**
-    * Adicione tarefas com data e observações.
-    * Defina prioridades: *Suave*, *Atenção* ou *Pra Ontem!*.
-    * Filtre entre pendentes e concluídas.
-* ⚖️ **O Juiz:** Ferramenta de sorteio imparcial para decidir quem executa uma tarefa na hora do impasse.
-* 📊 **Gamificação (Em breve):** Sistema de pontuação e níveis para o casal.
-
-## 🛠️ Tecnologias Utilizadas
-
-Este projeto foi construído com as tecnologias mais modernas do ecossistema React Native:
-
-* **[React Native](https://reactnative.dev/)** + **[Expo](https://expo.dev/)**: Para desenvolvimento ágil e compatibilidade iOS/Android.
-* **[Expo Router](https://docs.expo.dev/router/introduction/)**: Navegação baseada em arquivos (File-based routing), similar ao Next.js.
-* **[Firebase](https://firebase.google.com/)**:
-    * **Firestore**: Banco de dados NoSQL em tempo real para tarefas e usuários.
-    * **Auth**: Gerenciamento de autenticação.
-* **[TypeScript](https://www.typescriptlang.org/)**: Tipagem estática para código mais seguro e escalável.
-* **AsyncStorage**: Persistência de sessão local.
-
-## 🚀 Como Rodar o Projeto
-
-### Pré-requisitos
-* Node.js instalado.
-* Conta no Firebase configurada.
-
-### Passo a Passo
-
-1.  **Clone o repositório:**
-    ```bash
-    git clone [https://github.com/MarcosPerdigao/A-colher-2.git](https://github.com/MarcosPerdigao/A-colher-2.git)
-    cd A-colher-2
-    ```
-
-2.  **Instale as dependências:**
-    ```bash
-    npm install
-    # ou
-    yarn install
-    ```
-
-3.  **Configure o Firebase:**
-    * Crie um arquivo `firebaseConfig.ts` na raiz do projeto (baseado no `firebaseConfig.example.ts`).
-    * Insira suas chaves de API do Firebase Console.
-
-4.  **Execute o projeto:**
-    ```bash
-    npx expo start
-    ```
-    * Escaneie o QR Code com o app **Expo Go** (Android/iOS) ou rode no emulador.
-
-## 📂 Estrutura de Pastas
-
-A estrutura segue o padrão do **Expo Router**:
-
+O arquivo `google-services.json` já faz parte do histórico Git. `.gitignore` e `.easignore` não removem arquivos que foram versionados anteriormente. Revise o histórico e as permissões do projeto Firebase antes de mudar essa configuração; retirar o arquivo sem substituto quebra o build Android.

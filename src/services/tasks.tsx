@@ -8,7 +8,6 @@ import {
   onSnapshot,
   setDoc,
   deleteDoc,
-  getDocs,
   getDoc,
 } from "firebase/firestore";
 import { getApp } from "firebase/app";
@@ -67,7 +66,7 @@ export const TaskService = {
         );
         onUpdate(tasks);
       });
-    } catch (error) {
+    } catch {
       return null;
     }
   },
@@ -118,7 +117,7 @@ export const TaskService = {
       await uploadBytes(storageRef, blob);
       blob.close();
       return await getDownloadURL(storageRef);
-    } catch (error) {
+    } catch {
       return null;
     }
   },
@@ -140,7 +139,7 @@ export const TaskService = {
       if (!partnerUid) return null;
       const partnerDoc = await getDoc(doc(db, "users", partnerUid));
       return partnerDoc.exists() ? partnerDoc.data() : null;
-    } catch (e) {
+    } catch {
       return null;
     }
   },
@@ -155,9 +154,4 @@ export const TaskService = {
     return info?.pushToken || null; // Garante que pega o token real atrelado à conta
   },
 
-  // Mantido para não quebrar compatibilidade
-  saveUserToken: async (token: string, nickname: string) => {},
-  getToken: async (nickname: string) => {
-    return null;
-  },
 };
